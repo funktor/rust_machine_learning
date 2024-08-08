@@ -1,3 +1,13 @@
+// Dot product implementation using SIMD in Rust
+// Requires Rust nightly build and AVX 512 enabled for best performance.
+
+// > rustup override set nightly
+// > export RUSTFLAGS="-C target-cpu=native"
+// > cargo install cargo-simd-detect --force
+// > cargo simd-detect
+// > RUSTFLAGS=-g cargo build --release
+// > cargo run --bin dot_product_simd
+
 #![feature(portable_simd)]
 use std::simd::prelude::*;
 use rand_distr::{num_traits::abs, Distribution, Normal};
