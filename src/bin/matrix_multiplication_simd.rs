@@ -35,11 +35,20 @@ fn matrix_multiply_simd(inp1:&Vec<f32>, inp2:&Vec<f32>, n:usize, m:usize, p:usiz
         for k in 0..m {
             let a:Simd<f32, LANES> = Simd::splat(inp1[i*m+k]);
             for j in (0..p).step_by(LANES) {
-                let x:Simd<f32, LANES> = Simd::from_slice(&inp2[k*p+j..k*p+j+LANES]);
-                let z = a*x;
-                let mut c:Simd<f32, LANES> = Simd::from_slice(&out[i*p+j..i*p+j+LANES]);
-                c += z;
-                Simd::copy_to_slice(c, &mut out[i*p+j..i*p+j+LANES]);
+                if k*p+j+LANES > (k+1)*p {
+                    let mut r:usize = i*p+j;
+                    for h in k*p+j..(k+1)*p {
+                        out[r] += inp1[i*m+k]*inp2[h];
+                        r += 1;
+                    }
+                }
+                else {
+                    let x:Simd<f32, LANES> = Simd::from_slice(&inp2[k*p+j..k*p+j+LANES]);
+                    let z:Simd<f32, LANES> = a*x;
+                    let mut c:Simd<f32, LANES> = Simd::from_slice(&out[i*p+j..i*p+j+LANES]);
+                    c += z;
+                    Simd::copy_to_slice(c, &mut out[i*p+j..i*p+j+LANES]);
+                }
             }
         }
     }
@@ -48,9 +57,9 @@ fn matrix_multiply_simd(inp1:&Vec<f32>, inp2:&Vec<f32>, n:usize, m:usize, p:usiz
 
 fn main() {
     // Matrix multiplication
-    let n:usize = 256;
-    let m:usize = 256;
-    let p:usize = 256;
+    let n:usize = 101;
+    let m:usize = 511;
+    let p:usize = 397;
     let mut rng = thread_rng();
     let normal:Normal<f32> = Normal::new(0.0, 1.0).ok().unwrap();
     let mut inp1:Vec<f32> = vec![0.0;n*m];
