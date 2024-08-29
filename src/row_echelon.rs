@@ -1,10 +1,9 @@
-#![feature(portable_simd)]
+#![allow(dead_code)]
 use std::simd::prelude::*;
 use rand_distr::{Distribution, Normal};
 use rand::thread_rng;
-// use std::time::SystemTime;
 
-fn swap_rows(inp:&mut Vec<f64>, m:usize, p:usize, q:usize) {
+pub fn swap_rows(inp:&mut Vec<f64>, m:usize, p:usize, q:usize) {
     const LANES:usize = 64;
 
     for j in (0..m).step_by(LANES) {
@@ -26,7 +25,7 @@ fn swap_rows(inp:&mut Vec<f64>, m:usize, p:usize, q:usize) {
     }
 }
 
-fn normalize_row(inp:&mut Vec<f64>, h:f64, m:usize, p:usize) {
+pub fn normalize_row(inp:&mut Vec<f64>, h:f64, m:usize, p:usize) {
     const LANES:usize = 64;
     let x:Simd<f64, LANES> = Simd::splat(1.0/h);
 
@@ -45,7 +44,7 @@ fn normalize_row(inp:&mut Vec<f64>, h:f64, m:usize, p:usize) {
     }
 }
 
-fn reduce_row(inp:&mut Vec<f64>, m:usize, p:usize, q:usize, h:f64) {
+pub fn reduce_row(inp:&mut Vec<f64>, m:usize, p:usize, q:usize, h:f64) {
     const LANES:usize = 64;
     let x:Simd<f64, LANES> = Simd::splat(h);
 
@@ -66,7 +65,7 @@ fn reduce_row(inp:&mut Vec<f64>, m:usize, p:usize, q:usize, h:f64) {
     }
 }
 
-fn row_echelon(inp:&mut Vec<f64>, n:usize, m:usize) {
+pub fn row_echelon(inp:&mut Vec<f64>, n:usize, m:usize) {
     for j in 0..m {
         for i in j..n {
             if inp[i*m + j] != 0.0 {
@@ -85,7 +84,8 @@ fn row_echelon(inp:&mut Vec<f64>, n:usize, m:usize) {
         }
     }
 }
-fn main() {
+
+pub fn run() {
     let n = 10;
     let m = 5;
     let mut rng = thread_rng();

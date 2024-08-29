@@ -7,14 +7,13 @@
 // > cargo simd-detect
 // > RUSTFLAGS=-g cargo build --release
 // > cargo run --bin dot_product_simd
-
-#![feature(portable_simd)]
+#![allow(dead_code)]
 use std::simd::prelude::*;
 use rand_distr::{num_traits::abs, Distribution, Normal};
 use rand::thread_rng;
 use std::time::SystemTime;
 
-fn dot_product(inp1:&Vec<f64>, inp2:&Vec<f64>) -> f64 {
+pub fn dot_product(inp1:&[f64], inp2:&[f64]) -> f64 {
     let n:usize = inp1.len();
     let mut sum:f64 = 0.0;
     for i in 0..n {
@@ -24,7 +23,7 @@ fn dot_product(inp1:&Vec<f64>, inp2:&Vec<f64>) -> f64 {
     return sum;
 }
 
-fn dot_product_simd(inp1:&Vec<f64>, inp2:&Vec<f64>) -> f64 {
+pub fn dot_product_simd(inp1:&[f64], inp2:&[f64]) -> f64 {
     const LANES:usize = 64;
     let n:usize = inp1.len();
     let mut sum:f64 = 0.0;
@@ -45,7 +44,7 @@ fn dot_product_simd(inp1:&Vec<f64>, inp2:&Vec<f64>) -> f64 {
     return sum;
 }
 
-fn main() {
+pub fn run() {
     // Dot product
     const N:usize = 1234567;
     let mut rng = thread_rng();

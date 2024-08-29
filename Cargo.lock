@@ -3,14 +3,6 @@
 version = 3
 
 [[package]]
-name = "algorithms"
-version = "0.1.0"
-dependencies = [
- "rand",
- "rand_distr",
-]
-
-[[package]]
 name = "autocfg"
 version = "1.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -126,6 +118,14 @@ checksum = "32cb0b9bc82b0a0876c2dd994a7e7a2683d3e7390ca40e6886785ef0c7e3ee31"
 dependencies = [
  "num-traits",
  "rand",
+]
+
+[[package]]
+name = "rust_machine_learning"
+version = "0.1.0"
+dependencies = [
+ "rand",
+ "rand_distr",
 ]
 
 [[package]]

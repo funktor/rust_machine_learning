@@ -7,15 +7,14 @@
 // > cargo simd-detect
 // > RUSTFLAGS=-g cargo build --release
 // > cargo run --bin matrix_multiplication_simd
-
-#![feature(portable_simd)]
+#![allow(dead_code)]
 use std::simd::prelude::*;
 use rand_distr::{Distribution, Normal};
 use rand::thread_rng;
 use std::time::SystemTime;
 
-fn matrix_multiply(inp1:&Vec<f32>, inp2:&Vec<f32>, n:usize, m:usize, p:usize) -> Vec<f32> {
-    let mut out:Vec<f32> = vec![0.0;n*p];
+pub fn matrix_multiply(inp1:&[f64], inp2:&[f64], n:usize, m:usize, p:usize) -> Vec<f64> {
+    let mut out:Vec<f64> = vec![0.0;n*p];
     for i in 0..n {
         for k in 0..m {
             for j in 0..p {
@@ -27,13 +26,13 @@ fn matrix_multiply(inp1:&Vec<f32>, inp2:&Vec<f32>, n:usize, m:usize, p:usize) ->
     return out;
 }
 
-fn matrix_multiply_simd(inp1:&Vec<f32>, inp2:&Vec<f32>, n:usize, m:usize, p:usize) -> Vec<f32> {
+pub fn matrix_multiply_simd(inp1:&[f64], inp2:&[f64], n:usize, m:usize, p:usize) -> Vec<f64> {
     const LANES:usize = 64;
-    let mut out:Vec<f32> = vec![0.0;n*p];
+    let mut out:Vec<f64> = vec![0.0;n*p];
 
     for i in 0..n {
         for k in 0..m {
-            let a:Simd<f32, LANES> = Simd::splat(inp1[i*m+k]);
+            let a:Simd<f64, LANES> = Simd::splat(inp1[i*m+k]);
             for j in (0..p).step_by(LANES) {
                 if k*p+j+LANES > (k+1)*p {
                     let mut r:usize = i*p+j;
@@ -43,9 +42,9 @@ fn matrix_multiply_simd(inp1:&Vec<f32>, inp2:&Vec<f32>, n:usize, m:usize, p:usiz
                     }
                 }
                 else {
-                    let x:Simd<f32, LANES> = Simd::from_slice(&inp2[k*p+j..k*p+j+LANES]);
-                    let z:Simd<f32, LANES> = a*x;
-                    let mut c:Simd<f32, LANES> = Simd::from_slice(&out[i*p+j..i*p+j+LANES]);
+                    let x:Simd<f64, LANES> = Simd::from_slice(&inp2[k*p+j..k*p+j+LANES]);
+                    let z:Simd<f64, LANES> = a*x;
+                    let mut c:Simd<f64, LANES> = Simd::from_slice(&out[i*p+j..i*p+j+LANES]);
                     c += z;
                     Simd::copy_to_slice(c, &mut out[i*p+j..i*p+j+LANES]);
                 }
@@ -55,15 +54,15 @@ fn matrix_multiply_simd(inp1:&Vec<f32>, inp2:&Vec<f32>, n:usize, m:usize, p:usiz
     return out;
 }
 
-fn main() {
+pub fn run() {
     // Matrix multiplication
     let n:usize = 101;
     let m:usize = 511;
     let p:usize = 397;
     let mut rng = thread_rng();
-    let normal:Normal<f32> = Normal::new(0.0, 1.0).ok().unwrap();
-    let mut inp1:Vec<f32> = vec![0.0;n*m];
-    let mut inp2:Vec<f32> = vec![0.0;m*p];
+    let normal:Normal<f64> = Normal::new(0.0, 1.0).ok().unwrap();
+    let mut inp1:Vec<f64> = vec![0.0;n*m];
+    let mut inp2:Vec<f64> = vec![0.0;m*p];
 
     for i in 0..n*m {
         inp1[i] = normal.sample(&mut rng);
