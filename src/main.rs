@@ -10,7 +10,8 @@ mod solve_linear;
 mod linear_regression_gd;
 mod matrix_inverse;
 mod qr_decomposition;
+mod eigenvalues;
 
 fn main() {
-    qr_decomposition::run();
+    eigenvalues::run();
 }
