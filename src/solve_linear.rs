@@ -2,25 +2,8 @@
 use crate::dot_product_simd::dot_product_simd;
 use crate::lu_decomposition::lu_decomposition;
 use crate::matrix_multiplication_simd::matrix_multiply_simd;
-use std::simd::prelude::*;
 use rand_distr::{Distribution, Normal};
 use rand::thread_rng;
-
-pub fn copy(a:&[f64], b:&mut [f64], n:usize) {
-    const LANES:usize = 64;
-
-    for i in (0..n).step_by(LANES) {
-        if i+LANES > n {
-            for j in i..n {
-                b[j] = a[j];
-            }
-        }
-        else {
-            let x:Simd<f64, LANES> = Simd::from_slice(&a[i..i+LANES]);
-            Simd::copy_to_slice(x, &mut b[i..i+LANES]);
-        }
-    }
-}
 
 pub fn forward_sub(l:&[f64], b:&[f64], n:usize) -> Vec<f64> {
     let mut x:Vec<f64> = vec![0.0;n];
@@ -45,17 +28,11 @@ pub fn backward_sub(u:&[f64], b:&[f64], n:usize) -> Vec<f64> {
 }
 
 pub fn solve(a:&[f64], b:&[f64], n:usize) -> Vec<f64> {
-    let mut u:Vec<f64> = vec![0.0;n*n];
-    let mut l:Vec<f64> = vec![0.0;n*n];
-    let mut eye:Vec<f64> = vec![0.0;n*n];
+    let lu = lu_decomposition(&a, n, n);
 
-    copy(a, &mut u, n*n);
-
-    for i in 0..n {
-        eye[i*(n+1)] = 1.0;
-    }
-
-    lu_decomposition(&mut eye, &mut l, &mut u, n, n);
+    let eye = lu.0;
+    let l = lu.1;
+    let u = lu.2;
 
     let b1 = matrix_multiply_simd(&eye, &b, n, n, 1);
     let y = forward_sub(&l, &b1, n);

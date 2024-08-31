@@ -3,7 +3,7 @@ use std::simd::prelude::*;
 use rand_distr::{Distribution, Normal};
 use rand::thread_rng;
 
-pub fn swap_rows(inp:&mut Vec<f64>, m:usize, p:usize, q:usize) {
+pub fn swap_rows(inp:&mut [f64], m:usize, p:usize, q:usize) {
     const LANES:usize = 64;
 
     for j in (0..m).step_by(LANES) {
@@ -25,7 +25,7 @@ pub fn swap_rows(inp:&mut Vec<f64>, m:usize, p:usize, q:usize) {
     }
 }
 
-pub fn normalize_row(inp:&mut Vec<f64>, h:f64, m:usize, p:usize) {
+pub fn normalize_row(inp:&mut [f64], h:f64, m:usize, p:usize) {
     const LANES:usize = 64;
     let x:Simd<f64, LANES> = Simd::splat(1.0/h);
 
@@ -44,7 +44,7 @@ pub fn normalize_row(inp:&mut Vec<f64>, h:f64, m:usize, p:usize) {
     }
 }
 
-pub fn reduce_row(inp:&mut Vec<f64>, m:usize, p:usize, q:usize, h:f64) {
+pub fn reduce_row(inp:&mut [f64], m:usize, p:usize, q:usize, h:f64) {
     const LANES:usize = 64;
     let x:Simd<f64, LANES> = Simd::splat(h);
 
@@ -65,7 +65,7 @@ pub fn reduce_row(inp:&mut Vec<f64>, m:usize, p:usize, q:usize, h:f64) {
     }
 }
 
-pub fn row_echelon(inp:&mut Vec<f64>, n:usize, m:usize) {
+pub fn row_echelon(inp:&mut [f64], n:usize, m:usize) {
     for j in 0..m {
         for i in j..n {
             if inp[i*m + j] != 0.0 {
