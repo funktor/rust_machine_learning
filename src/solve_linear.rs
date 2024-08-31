@@ -18,7 +18,7 @@ pub fn forward_sub(l:&[f64], b:&[f64], n:usize) -> Vec<f64> {
 
 pub fn backward_sub(u:&[f64], b:&[f64], n:usize) -> Vec<f64> {
     let mut x:Vec<f64> = vec![0.0;n];
-    
+
     for i in (0..n).rev() {
         let p = dot_product_simd(&u[i*(n+1)+1..(i+1)*n], &x[i+1..n]);
         x[i] = (b[i]-p)/u[i*(n+1)];

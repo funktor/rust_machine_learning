@@ -12,6 +12,11 @@ pub fn eigenvalues(a:&[f64], n:usize) -> Vec<f64> {
     let mut eig = vec![0.0;n];
 
     loop {
+        let s = b[n*n-1];
+        for i in 0..n {
+            b[i*n+i] -= s;
+        }
+
         let qr = qr_decomposition(&b, n, n);
         let x = matrix_multiply_simd(&qr.1, &qr.0, n, n, n);
         copy(&x, &mut b, n*n);
@@ -19,6 +24,7 @@ pub fn eigenvalues(a:&[f64], n:usize) -> Vec<f64> {
         let mut flag = true;
 
         for i in 0..n {
+            b[i*n+i] += s;
             if (b[i*n+i]-eig[i])/b[i*n+i] > 0.001 {
                 flag = false;
             }
