@@ -127,12 +127,27 @@ pub fn qr_decomposition(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Vec<f64>) {
         }
     }
 
-    return (transpose(&q, n, n), r);
+    let mut q_t = transpose(&q, n, n);
+    let mut sign_r = vec![0.0;n*n];
+
+    for i in 0..n {
+        if r[i*m+i] < 0.0 {
+            sign_r[i*m+i] = -1.0;
+        }
+        else if r[i*m+i] > 0.0 {
+            sign_r[i*m+i] = 1.0;
+        }
+    }
+
+    q_t = matrix_multiply_simd(&q_t, &sign_r, n, n, n);
+    r = matrix_multiply_simd(&sign_r, &r, n, n, m);
+
+    return (q_t, r);
 }
 
 pub fn run() {
-    let n = 123;
-    let m = 569;
+    let n = 3;
+    let m = 3;
 
     let mut rng = thread_rng();
     let normal:Normal<f64> = Normal::new(0.0, 1.0).ok().unwrap();
@@ -145,6 +160,10 @@ pub fn run() {
 
     let qr = qr_decomposition(&a, n, m);
     let v = matrix_multiply_simd(&qr.0, &qr.1, n, n, m);
+
+    println!("{:?}", a);
+    println!("{:?}", qr.0);
+    println!("{:?}", qr.1);
 
     for i in 0..n*m {
         if (a[i]-v[i]).abs()/a[i] > 0.01  {

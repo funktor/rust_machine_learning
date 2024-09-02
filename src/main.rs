@@ -11,7 +11,8 @@ mod linear_regression_gd;
 mod matrix_inverse;
 mod qr_decomposition;
 mod eigenvalues;
+mod svd;
 
 fn main() {
-    eigenvalues::run();
+    svd::run();
 }

@@ -1,4 +1,6 @@
 #![allow(dead_code)]
+use std::f64::MIN_POSITIVE;
+
 use crate::copy::copy;
 use crate::transpose::transpose;
 use crate::matrix_multiplication_simd::matrix_multiply_simd;
@@ -24,7 +26,7 @@ pub fn eigenvalues(a:&[f64], n:usize) -> Vec<f64> {
 
         for i in 0..n {
             b[i*n+i] += s;
-            if (b[i*n+i]-eig[i]).abs()/b[i*n+i] > 0.01 {
+            if (b[i*n+i]-eig[i]).abs()/b[i*n+i] > 0.001 {
                 flag = false;
             }
             eig[i] = b[i*n+i];
@@ -58,7 +60,7 @@ pub fn eigenvectors(a:&[f64], n:usize)  -> (Vec<f64>, Vec<f64>) {
         let mut flag = true;
 
         for i in 0..n {
-            if (b[i*n+i]-eigval[i]).abs()/b[i*n+i] > 0.01 {
+            if (b[i*n+i]-eigval[i]).abs() > MIN_POSITIVE {
                 flag = false;
             }
             eigval[i] = b[i*n+i];
