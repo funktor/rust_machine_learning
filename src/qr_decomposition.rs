@@ -6,6 +6,7 @@ use crate::matrix_multiplication_simd::matrix_multiply_simd;
 use std::simd::prelude::*;
 use rand_distr::{Distribution, Normal};
 use rand::thread_rng;
+use std::cmp::min;
 
 pub fn norm(a:&[f64], n:usize) -> f64{
     const LANES:usize = 64;
@@ -44,6 +45,17 @@ pub fn mul_vec(inp:&[f64], x:f64, n:usize) -> Vec<f64>{
             let y = a*b;
             Simd::copy_to_slice(y, &mut out[i..i+LANES]);
         }
+    }
+
+    return out;
+}
+
+pub fn mul_mat_const(inp:&[f64], x:f64, n:usize, m:usize) -> Vec<f64>{
+    let mut out = vec![0.0;n*m];
+    
+    for i in 0..n {
+        let a = mul_vec(&inp[i*m..(i+1)*m], x, m);
+        copy(&a, &mut out[i*m..(i+1)*m], m);
     }
 
     return out;
@@ -145,9 +157,93 @@ pub fn qr_decomposition(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Vec<f64>) {
     return (q_t, r);
 }
 
+pub fn qr_decomposition_householder(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Vec<f64>) {
+    let a_t = transpose(&a, n, m);
+
+    let mut q:Vec<f64> = vec![0.0;n*n];
+    let mut r:Vec<f64> = vec![0.0;n*m];
+
+    copy(&a_t, &mut r, n*m);
+
+    for i in 0..n {
+        q[i*n+i] = 1.0;
+    }
+
+    let mut q_matrices: Vec<Vec<f64>> = Vec::new();
+
+    for i in 0..min(n,m)-1 {
+        let n1 = n-i;
+        let a1 = &r[i*(n+1)..(i+1)*n];
+        let x = norm(&a1, n1);
+
+        let mut alpha;
+    
+        if a1[0] < 0.0 {
+            alpha = -1.0;
+        }
+        else {
+            alpha = 1.0;
+        }
+
+        alpha = -alpha*x;
+
+        let mut w = vec![0.0;n1];
+        w[0] = alpha;
+        let v = add_vecs(&a1, &w, n1);
+        let y = norm(&v, n1);
+        let u = mul_vec(&v, 1.0/y, n1);    
+        let u_t = transpose(&u, n1, 1);
+
+        let mut u1 = vec![0.0;n];
+        for j in i..n {
+            u1[j] = u[j-i];
+        }
+        let u1_t = transpose(&u1, n, 1);
+
+        let k = m-i;
+        let mut z = matrix_multiply_simd(&r[i*n..], &u1, k, n, 1);
+        z = matrix_multiply_simd(&z, &u1_t, k, 1, n);
+        z = mul_mat_const(&z, -2.0, k, n);
+
+        for j in i..m {
+            let b = add_vecs(&r[j*n..(j+1)*n], &z[(j-i)*n..(j-i+1)*n], n);
+            copy(&b, &mut r[j*n..(j+1)*n], n);
+        }
+
+        
+
+        let mut g = matrix_multiply_simd(&u, &u_t, n1, 1, n1);
+        g = mul_mat_const(&g, -2.0, n1, n1);
+
+        for j in 0..n1 {
+            g[j*n1+j] = 1.0+g[j*n1+j];
+        }
+
+        let mut q1 = vec![0.0;n*n];
+        for j in 0..n {
+            if j < i {
+                q1[j*n+j] = 1.0;
+            }
+            else {
+                copy(&g[(j-i)*n1..(j-i+1)*n1], &mut q1[j*n+i..(j+1)*n], n1);
+            }
+        }
+
+        let q1_t = transpose(&q1, n, n);
+        q_matrices.push(q1_t);
+    }   
+
+    for q_mat in q_matrices {
+        q = matrix_multiply_simd(&q, &q_mat, n, n, n);
+    }
+
+    return (q, transpose(&r, m, n));
+}
+
+
 pub fn run() {
-    let n = 3;
-    let m = 3;
+    let n = 1234;
+    let m = 569;
 
     let mut rng = thread_rng();
     let normal:Normal<f64> = Normal::new(0.0, 1.0).ok().unwrap();
@@ -158,12 +254,13 @@ pub fn run() {
         a[i] = normal.sample(&mut rng);
     }
 
-    let qr = qr_decomposition(&a, n, m);
+    let qr = qr_decomposition_householder(&a, n, m);
     let v = matrix_multiply_simd(&qr.0, &qr.1, n, n, m);
 
-    println!("{:?}", a);
-    println!("{:?}", qr.0);
-    println!("{:?}", qr.1);
+    // println!("{:?}", a);
+    // println!("{:?}", qr.0);
+    // println!("{:?}", qr.1);
+    // println!("{:?}", v);
 
     for i in 0..n*m {
         if (a[i]-v[i]).abs()/a[i] > 0.01  {
