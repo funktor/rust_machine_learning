@@ -50,17 +50,6 @@ pub fn mul_vec(inp:&[f64], x:f64, n:usize) -> Vec<f64>{
     return out;
 }
 
-pub fn mul_mat_const(inp:&[f64], x:f64, n:usize, m:usize) -> Vec<f64>{
-    let mut out = vec![0.0;n*m];
-    
-    for i in 0..n {
-        let a = mul_vec(&inp[i*m..(i+1)*m], x, m);
-        copy(&a, &mut out[i*m..(i+1)*m], m);
-    }
-
-    return out;
-}
-
 pub fn add_vecs(inp1:&[f64], inp2:&[f64], n:usize) -> Vec<f64>{
     const LANES:usize = 64;
     let mut out = vec![0.0;n];
@@ -169,8 +158,6 @@ pub fn qr_decomposition_householder(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Ve
         q[i*n+i] = 1.0;
     }
 
-    let mut q_matrices: Vec<Vec<f64>> = Vec::new();
-
     for i in 0..min(n,m)-1 {
         let n1 = n-i;
         let a1 = &r[i*(n+1)..(i+1)*n];
@@ -192,50 +179,20 @@ pub fn qr_decomposition_householder(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Ve
         let v = add_vecs(&a1, &w, n1);
         let y = norm(&v, n1);
         let u = mul_vec(&v, 1.0/y, n1);    
-        let u_t = transpose(&u, n1, 1);
 
         let mut u1 = vec![0.0;n];
-        for j in i..n {
-            u1[j] = u[j-i];
-        }
-        let u1_t = transpose(&u1, n, 1);
+        copy(&u, &mut u1[i..n], n1);
 
-        let k = m-i;
-        let mut z = matrix_multiply_simd(&r[i*n..], &u1, k, n, 1);
-        z = matrix_multiply_simd(&z, &u1_t, k, 1, n);
-        z = mul_mat_const(&z, -2.0, k, n);
+        let mut z = matrix_multiply_simd(&r, &u1, m, n, 1);
+        z = matrix_multiply_simd(&z, &u1, m, 1, n);
+        z = mul_vec(&z, -2.0, m*n);
+        r = add_vecs(&r, &z, m*n);
 
-        for j in i..m {
-            let b = add_vecs(&r[j*n..(j+1)*n], &z[(j-i)*n..(j-i+1)*n], n);
-            copy(&b, &mut r[j*n..(j+1)*n], n);
-        }
-
-        
-
-        let mut g = matrix_multiply_simd(&u, &u_t, n1, 1, n1);
-        g = mul_mat_const(&g, -2.0, n1, n1);
-
-        for j in 0..n1 {
-            g[j*n1+j] = 1.0+g[j*n1+j];
-        }
-
-        let mut q1 = vec![0.0;n*n];
-        for j in 0..n {
-            if j < i {
-                q1[j*n+j] = 1.0;
-            }
-            else {
-                copy(&g[(j-i)*n1..(j-i+1)*n1], &mut q1[j*n+i..(j+1)*n], n1);
-            }
-        }
-
-        let q1_t = transpose(&q1, n, n);
-        q_matrices.push(q1_t);
-    }   
-
-    for q_mat in q_matrices {
-        q = matrix_multiply_simd(&q, &q_mat, n, n, n);
-    }
+        z = matrix_multiply_simd(&q, &u1, n, n, 1);
+        z = matrix_multiply_simd(&z, &u1, n, 1, n);
+        z = mul_vec(&z, -2.0, n*n);
+        q = add_vecs(&q, &z, n*n);
+    } 
 
     return (q, transpose(&r, m, n));
 }
