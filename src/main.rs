@@ -14,5 +14,5 @@ mod eigenvalues;
 mod svd;
 
 fn main() {
-    qr_decomposition::run();
+    svd::run();
 }
