@@ -12,7 +12,9 @@ mod matrix_inverse;
 mod qr_decomposition;
 mod eigenvalues;
 mod svd;
+mod sparse_matrix;
+mod svd_new;
 
 fn main() {
-    svd::run();
+    svd_new::run();
 }
