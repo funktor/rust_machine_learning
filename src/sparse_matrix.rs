@@ -5,6 +5,9 @@ use rand::thread_rng;
 
 fn binary_search(arr:&[usize], i:usize) -> usize {
     let n = arr.len();
+    if n == 0 {
+        return 0;
+    }
 
     let mut lt:usize = 0;
     let mut rt:usize = n-1;
@@ -30,6 +33,10 @@ fn binary_search(arr:&[usize], i:usize) -> usize {
 
 fn binary_search_next(arr:&[usize], i:usize) -> usize {
     let n = arr.len();
+    if n == 0 {
+        return 0;
+    }
+
     let mut lt:usize = 0;
     let mut rt:usize = n-1;
 
@@ -54,8 +61,8 @@ fn binary_search_next(arr:&[usize], i:usize) -> usize {
 
 #[derive(Clone)]
 pub struct SparseMatrix {
-    nrow: usize,
-    ncol: usize,
+    pub nrow: usize,
+    pub ncol: usize,
     keys: Vec<usize>,
     data: Vec<f64>,
 }
@@ -180,8 +187,10 @@ pub fn add(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
                 j += 1;
             }
             else {
-                keys.push(a.keys[i]);
-                data.push(a.data[i]+b.data[j]);
+                if (a.data[i]+b.data[j]).abs() > 1e-10 {
+                    keys.push(a.keys[i]);
+                    data.push(a.data[i]+b.data[j]);
+                }
                 i += 1;
                 j += 1;
             }
@@ -225,8 +234,10 @@ pub fn sub(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
                 j += 1;
             }
             else {
-                keys.push(a.keys[i]);
-                data.push(a.data[i]-b.data[j]);
+                if (a.data[i]-b.data[j]).abs() > 1e-10 {
+                    keys.push(a.keys[i]);
+                    data.push(a.data[i]-b.data[j]);
+                }
                 i += 1;
                 j += 1;
             }
@@ -266,8 +277,10 @@ pub fn mul(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
                 j += 1;
             }
             else {
-                keys.push(a.keys[i]);
-                data.push(a.data[i]*b.data[j]);
+                if (a.data[i]*b.data[j]).abs() > 1e-10 {
+                    keys.push(a.keys[i]);
+                    data.push(a.data[i]*b.data[j]);
+                }
                 i += 1;
                 j += 1;
             }
@@ -283,21 +296,20 @@ pub fn mul_const(a:&SparseMatrix, b:f64) -> SparseMatrix {
     let mut keys:Vec<usize> = Vec::new();
     let mut data:Vec<f64> = Vec::new();
 
-    if b != 0.0 {
-        for i in 0..a.keys.len() {
+    for i in 0..a.keys.len() {
+        if (b*a.data[i]).abs() > 1e-10 {
             keys.push(a.keys[i]);
             data.push(b*a.data[i]);
         }
-        
-        return SparseMatrix::new(a.nrow, a.ncol, keys, data);
     }
-    
-    return SparseMatrix::new(0, 0, keys, data);
+
+    return SparseMatrix::new(a.nrow, a.ncol, keys, data);
 }
 
 pub fn transpose(a:&SparseMatrix) -> SparseMatrix {
     let mut keys:Vec<usize> = Vec::new();
     let mut data:Vec<f64> = Vec::new();
+    let mut zipped:Vec<(usize, f64)> = Vec::new();
 
     for i in 0..a.keys.len() {
         let key = a.keys[i];
@@ -305,64 +317,85 @@ pub fn transpose(a:&SparseMatrix) -> SparseMatrix {
         let r = key/a.ncol;
         let c = key % a.ncol;
 
-        keys.push(c*a.nrow+r);
+        zipped.push((c*a.nrow+r, d));
+    }
+
+    zipped.sort_by_key(|x| x.0);
+
+    for (key, d) in zipped {
+        keys.push(key);
         data.push(d);
     }
 
     return SparseMatrix::new(a.ncol, a.nrow, keys, data);
 }
 
-pub fn copy(a:&SparseMatrix, b:&SparseMatrix, r_start:usize, c_start:usize) -> SparseMatrix {
+pub fn copy(a:&SparseMatrix, b:&SparseMatrix, r_start:usize, r_end:usize, c_start:usize, c_end:usize) -> SparseMatrix {
     let mut keys:Vec<usize> = Vec::new();
     let mut data:Vec<f64> = Vec::new();
 
-    let mut b_keys:Vec<usize> = Vec::new();
-    let mut b_data:Vec<f64> = Vec::new();
+    if a.nrow >= b.nrow && a.ncol >= b.ncol {
+        let mut b_keys:Vec<usize> = Vec::new();
+        let mut b_data:Vec<f64> = Vec::new();
 
-    for i in 0..b.keys.len() {
-        let key = b.keys[i];
-        let r = key/b.ncol;
-        let c = key % b.ncol;
-        let nkey = (r+r_start)*a.ncol+(c+c_start);
-        b_keys.push(nkey);
-        b_data.push(b.data[i]);
-    }
+        for i in 0..b.keys.len() {
+            let key = b.keys[i];
+            let r = key/b.ncol;
+            let c = key % b.ncol;
+            let nkey = (r+r_start)*a.ncol+(c+c_start);
+            b_keys.push(nkey);
+            b_data.push(b.data[i]);
+        }
 
-    let mut i:usize = 0;
-    let mut j:usize = 0;
+        let mut i:usize = 0;
+        let mut j:usize = 0;
 
-    while i < a.keys.len() && j < b_keys.len() {
-        if a.keys[i] < b_keys[j] {
-            keys.push(a.keys[i]);
-            data.push(a.data[i]);
+        while i < a.keys.len() && j < b_keys.len() {
+            if a.keys[i] < b_keys[j] {
+                let r = a.keys[i]/a.ncol;
+                let c = a.keys[i] % a.ncol;
+
+                if r < r_start || r > r_end || c < c_start || c > c_end {
+                    keys.push(a.keys[i]);
+                    data.push(a.data[i]);
+                } 
+                
+                i += 1;
+            }
+            else if a.keys[i] > b_keys[j] {
+                keys.push(b_keys[j]);
+                data.push(b_data[j]);
+                j += 1;
+            }
+            else {
+                keys.push(b_keys[j]);
+                data.push(b_data[j]);
+                i += 1;
+                j += 1;
+            }
+        }
+
+        while i < a.keys.len() {
+            let r = a.keys[i]/a.ncol;
+            let c = a.keys[i] % a.ncol;
+
+            if r < r_start || r > r_end || c < c_start || c > c_end {
+                keys.push(a.keys[i]);
+                data.push(a.data[i]);
+            }
             i += 1;
         }
-        else if a.keys[i] > b_keys[j] {
+
+        while j < b_keys.len() {
             keys.push(b_keys[j]);
             data.push(b_data[j]);
             j += 1;
         }
-        else {
-            keys.push(b_keys[j]);
-            data.push(b_data[j]);
-            i += 1;
-            j += 1;
-        }
-    }
 
-    while i < a.keys.len() {
-        keys.push(a.keys[i]);
-        data.push(a.data[i]);
-        i += 1;
+        return SparseMatrix::new(a.nrow, a.ncol, keys, data);
     }
-
-    while j < b_keys.len() {
-        keys.push(b_keys[j]);
-        data.push(b_data[j]);
-        j += 1;
-    }
-
-    return SparseMatrix::new(a.ncol, a.nrow, keys, data);
+    
+    return SparseMatrix::new(0, 0, keys, data);
 }
 
 pub fn vstack(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
@@ -434,6 +467,9 @@ pub fn dot(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
                     let u = hmap.entry(nkey).or_insert(0.0);
                     *u += a_d*b_d;
                 }
+                else {
+                    break;
+                }
             }
         }
 
@@ -466,8 +502,8 @@ pub fn convert_to_array(a:&SparseMatrix) -> Vec<f64> {
 }
 
 pub fn run() {
-    let n = 5;
-    let m = 5;
+    let n = 1000;
+    let m = 1000;
 
     let mut rng = thread_rng();
     let normal:Normal<f64> = Normal::new(0.0, 1.0).ok().unwrap();
@@ -482,18 +518,18 @@ pub fn run() {
 
     let uniform = Uniform::new(0, n*m);
 
-    for _ in 0..20 as usize {
+    for _ in 0..999000 {
         let j = uniform.sample(&mut rng);
         a[j] = 0.0;
     }
 
-    for _ in 0..20 as usize {
+    for _ in 0..999000 {
         let j = uniform.sample(&mut rng);
         b[j] = 0.0;
     }
 
     let c = SparseMatrix::create(n, m, &a);
-    let d = SparseMatrix::create(n, m, &b);
+    let d = SparseMatrix::create(m, n, &b);
 
     let e = get_sub_mat(&c, 1, 3, 2, 4);
     let f = convert_to_array(&e);
@@ -507,6 +543,9 @@ pub fn run() {
     let l = dot(&c, &d);
     let m = convert_to_array(&l);
 
+    let q = transpose(&c);
+    let y = convert_to_array(&q);
+
     println!("{:?}", a);
     println!();
     println!("{:?}", b);
@@ -518,6 +557,8 @@ pub fn run() {
     println!("{:?}", k);
     println!();
     println!("{:?}", m);
+    println!();
+    println!("{:?}", y);
 }
 
 
