@@ -1,7 +1,11 @@
 #![allow(dead_code)]
-use std::collections::HashMap;
+use std::cmp::min;
 use rand_distr::{Distribution, Normal, Uniform};
 use rand::thread_rng;
+use std::time::SystemTime;
+use std::thread;
+use std::sync::{Arc, Mutex};
+use std::simd::prelude::*;
 
 fn binary_search(arr:&[usize], i:usize) -> usize {
     let n = arr.len();
@@ -126,41 +130,42 @@ pub fn get_sub_mat(a:&SparseMatrix, r_start:usize, r_end:usize, c_start:usize, c
     let mut keys:Vec<usize> = Vec::new();
     let mut data:Vec<f64> = Vec::new();
 
-    let k_start = r_start*a.ncol + c_start;
-    let k = binary_search_next(&a.keys, k_start);
-    
-    let n = r_end-r_start+1;
-    let m = c_end-c_start+1;
+    let mut n = 0;
+    let mut m = 0;
 
-    let mut h = k;
+    if a.nrow >= r_end-r_start+1 && a.ncol >= c_end-c_start+1 {
+        let k_start = r_start*a.ncol + c_start;
+        let mut h = binary_search_next(&a.keys, k_start);
 
-    while h < a.keys.len() {
-        let key = a.keys[h];
-        let d = a.data[h];
+        n = r_end-r_start+1;
+        m = c_end-c_start+1;
 
-        let i = key/a.ncol;
-        let j = key % a.ncol;
+        while h < a.keys.len() {
+            let key = a.keys[h];
+            let d = a.data[h];
 
-        if i > r_end {
-            break;
-        }
+            let i = key/a.ncol;
+            let j = key % a.ncol;
 
-        if j >= c_start && j <= c_end {
-            keys.push((i-r_start)*m+(j-c_start));
-            data.push(d);
-            h += 1;
-        }
+            if i > r_end {
+                break;
+            }
 
-        else if j < c_start{
-            let k_start = i*a.ncol + c_start;
-            let k = binary_search_next(&a.keys, k_start);
-            h = k;
-        }
+            if j >= c_start && j <= c_end {
+                keys.push((i-r_start)*m+(j-c_start));
+                data.push(d);
+                h += 1;
+            }
 
-        else {
-            let k_start = (i+1)*a.ncol + c_start;
-            let k = binary_search_next(&a.keys, k_start);
-            h = k;
+            else if j < c_start{
+                let k_start = i*a.ncol + c_start;
+                h = binary_search_next(&a.keys, k_start);
+            }
+
+            else {
+                let k_start = (i+1)*a.ncol + c_start;
+                h = binary_search_next(&a.keys, k_start);
+            }
         }
     }
 
@@ -171,7 +176,13 @@ pub fn add(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
     let mut keys:Vec<usize> = Vec::new();
     let mut data:Vec<f64> = Vec::new();
 
-    if a.nrow == b.nrow && a.ncol == b.ncol {
+    let mut n = 0;
+    let mut m = 0;
+
+    if a.nrow > 0 && a.ncol > 0 && a.nrow == b.nrow && a.ncol == b.ncol {
+        n = a.nrow;
+        m = a.ncol;
+
         let mut i:usize = 0;
         let mut j:usize = 0;
 
@@ -207,18 +218,22 @@ pub fn add(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
             data.push(b.data[j]);
             j += 1;
         }
-
-        return SparseMatrix::new(a.nrow, a.ncol, keys, data);
     }
     
-    return SparseMatrix::new(0, 0, keys, data);
+    return SparseMatrix::new(n, m, keys, data);
 }
 
 pub fn sub(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
     let mut keys:Vec<usize> = Vec::new();
     let mut data:Vec<f64> = Vec::new();
 
-    if a.nrow == b.nrow && a.ncol == b.ncol {
+    let mut n = 0;
+    let mut m = 0;
+
+    if a.nrow > 0 && a.ncol > 0 && a.nrow == b.nrow && a.ncol == b.ncol {
+        n = a.nrow;
+        m = a.ncol;
+
         let mut i:usize = 0;
         let mut j:usize = 0;
 
@@ -254,18 +269,22 @@ pub fn sub(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
             data.push(-b.data[j]);
             j += 1;
         }
-
-        return SparseMatrix::new(a.nrow, a.ncol, keys, data);
     }
     
-    return SparseMatrix::new(0, 0, keys, data);
+    return SparseMatrix::new(n, m, keys, data);
 }
 
 pub fn mul(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
     let mut keys:Vec<usize> = Vec::new();
     let mut data:Vec<f64> = Vec::new();
 
-    if a.nrow == b.nrow && a.ncol == b.ncol {
+    let mut n = 0;
+    let mut m = 0;
+
+    if a.nrow > 0 && a.ncol > 0 && a.nrow == b.nrow && a.ncol == b.ncol {
+        n = a.nrow;
+        m = a.ncol;
+
         let mut i:usize = 0;
         let mut j:usize = 0;
 
@@ -285,11 +304,9 @@ pub fn mul(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
                 j += 1;
             }
         }
-
-        return SparseMatrix::new(a.nrow, a.ncol, keys, data);
     }
     
-    return SparseMatrix::new(0, 0, keys, data);
+    return SparseMatrix::new(n, m, keys, data);
 }
 
 pub fn mul_const(a:&SparseMatrix, b:f64) -> SparseMatrix {
@@ -334,7 +351,13 @@ pub fn copy(a:&SparseMatrix, b:&SparseMatrix, r_start:usize, r_end:usize, c_star
     let mut keys:Vec<usize> = Vec::new();
     let mut data:Vec<f64> = Vec::new();
 
+    let mut n = 0;
+    let mut m = 0;
+
     if a.nrow >= b.nrow && a.ncol >= b.ncol {
+        n = a.nrow;
+        m = a.ncol;
+
         let mut b_keys:Vec<usize> = Vec::new();
         let mut b_data:Vec<f64> = Vec::new();
 
@@ -391,32 +414,64 @@ pub fn copy(a:&SparseMatrix, b:&SparseMatrix, r_start:usize, r_end:usize, c_star
             data.push(b_data[j]);
             j += 1;
         }
-
-        return SparseMatrix::new(a.nrow, a.ncol, keys, data);
     }
     
-    return SparseMatrix::new(0, 0, keys, data);
+    return SparseMatrix::new(n, m, keys, data);
 }
 
 pub fn vstack(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
-    let mut keys:Vec<usize> = Vec::new();
-    let mut data:Vec<f64> = Vec::new();
+    let n1 = a.keys.len();
+    let n2 = b.keys.len();
+
+    let mut keys:Vec<usize> = vec![0;n1+n2];
+    let mut data:Vec<f64> = vec![0.0;n1+n2];
+
+    let mut n = 0;
+    let mut m = 0;
 
     if a.ncol == b.ncol {
-        for i in 0..a.keys.len() {
-            keys.push(a.keys[i]);
-            data.push(a.data[i]);
-        }
-    
-        for i in 0..b.keys.len() {
-            keys.push(b.keys[i]+a.nrow*a.ncol);
-            data.push(b.data[i]);
+        n = a.nrow + b.nrow;
+        m = a.ncol;
+
+        const LANES:usize = 64;
+
+        for i in (0..n1).step_by(LANES) {
+            if i+LANES > n1 {
+                for j in i..n1 {
+                    keys[j] = a.keys[j];
+                    data[j] = a.data[j];
+                }
+            }
+            else {
+                let x:Simd<usize, LANES> = Simd::from_slice(&a.keys[i..i+LANES]);
+                Simd::copy_to_slice(x, &mut keys[i..i+LANES]);
+
+                let x:Simd<f64, LANES> = Simd::from_slice(&a.data[i..i+LANES]);
+                Simd::copy_to_slice(x, &mut data[i..i+LANES]);
+            }
         }
 
-        return SparseMatrix::new(a.nrow+b.nrow, a.ncol, keys, data);
+        for i in (0..n2).step_by(LANES) {
+            if i+LANES > n2 {
+                for j in i..n2 {
+                    keys[j+n1] = b.keys[j]+a.nrow*a.ncol;
+                    data[j+n1] = b.data[j];
+                }
+            }
+            else {
+                let h:Simd<usize, LANES> = Simd::splat(a.nrow*a.ncol);
+                let x:Simd<usize, LANES> = Simd::from_slice(&b.keys[i..i+LANES]);
+                let y = x + h;
+                
+                Simd::copy_to_slice(y, &mut keys[i+n1..i+n1+LANES]);
+
+                let x:Simd<f64, LANES> = Simd::from_slice(&b.data[i..i+LANES]);
+                Simd::copy_to_slice(x, &mut data[i+n1..i+n1+LANES]);
+            }
+        }
     }
 
-    return SparseMatrix::new(0, 0, keys, data);
+    return SparseMatrix::new(n, m, keys, data);
 }
 
 pub fn identity(n:usize) -> SparseMatrix {
@@ -432,61 +487,102 @@ pub fn identity(n:usize) -> SparseMatrix {
 }
 
 pub fn norm(a:&SparseMatrix) -> f64 {
-    let mut out:f64 = 0.0;
+    const LANES:usize = 64;
+    let mut s = 0.0;
+    let n = a.keys.len();
 
-    for i in 0..a.data.len() {
-        out += a.data[i]*a.data[i];
+    for i in (0..n).step_by(LANES) {
+        if i+LANES > n {
+            for j in i..n {
+                s += a.data[j]*a.data[j];
+            }
+        }
+        else {
+            let x:Simd<f64, LANES> = Simd::from_slice(&a.data[i..i+LANES]);
+            let y = x*x;
+            s += y.reduce_sum();
+        }
     }
-    return out.sqrt();
+
+    return s.sqrt();
 }
 
 pub fn dot(a:&SparseMatrix, b:&SparseMatrix) -> SparseMatrix {
     let mut keys:Vec<usize> = Vec::new();
     let mut data:Vec<f64> = Vec::new();
-    let mut hmap:HashMap<usize, f64> = HashMap::new();
+
+    let a_arc = Arc::new(a.clone());
+    let b_arc = Arc::new(b.clone());
+
+    let mut n = 0;
+    let mut m = 0;
 
     if a.ncol == b.nrow {
-        let n = a.nrow;
-        let m = b.ncol;
+        n = a.nrow;
+        m = b.ncol;
 
-        for i in 0..a.keys.len() {
-            let a_key = a.keys[i];
-            let a_d = a.data[i];
-            let a_row = a_key/a.ncol;
-            let a_col = a_key % a.ncol;
+        let n1 = a.keys.len();
+        let hmap = Arc::new(Mutex::new(vec![0.0;n*m]));
+
+        let mut handles = vec![];
+        let q = (n1 as f64/4.0).ceil() as usize;
+
+        for r in (0..n1).step_by(q) {
+            let a_curr = Arc::clone(&a_arc);
+            let b_curr = Arc::clone(&b_arc);
+            let h_map = Arc::clone(&hmap);
             
-            let k = binary_search_next(&b.keys, a_col*b.ncol);
-            for j in k..b.keys.len() {
-                let b_key = b.keys[j];
-                let b_d = b.data[j];
-                let b_row = b_key/b.ncol;
-                let b_col = b_key % b.ncol;
+            let handle = thread::spawn(move || {
+                let mut i = r;
+                let mut h = h_map.lock().unwrap();
 
-                if b_row == a_col {
-                    let nkey = a_row*m+b_col;
-                    let u = hmap.entry(nkey).or_insert(0.0);
-                    *u += a_d*b_d;
+                while i < min(r+q, n1)  {
+                    let a_key = a_curr.keys[i];
+                    let a_d = a_curr.data[i];
+                    let a_row = a_key/a_curr.ncol;
+                    let a_col = a_key % a_curr.ncol;
+
+                    let mut j = binary_search_next(&b_curr.keys, a_col*b_curr.ncol);
+                    
+                    while j < b_curr.keys.len() {
+                        let b_key = b_curr.keys[j];
+                        let b_d = b_curr.data[j];
+                        let b_row = b_key/b_curr.ncol;
+                        let b_col = b_key % b_curr.ncol;
+
+                        if b_row == a_col {
+                            let nkey = a_row*m+b_col;
+                            h[nkey] += a_d*b_d;
+                        }
+                        else {
+                            break;
+                        }
+
+                        j += 1;
+                    }
+
+                    i += 1;
                 }
-                else {
-                    break;
-                }
+            });
+
+            handles.push(handle);
+        }
+
+        for handle in handles {
+            handle.join().unwrap();
+        }
+
+        let h = hmap.lock().unwrap();
+
+        for i in 0..h.len() {
+            if h[i].abs() > 1e-10 {
+                keys.push(i);
+                data.push(h[i]);
             }
         }
-
-        for k in hmap.keys() {
-            keys.push(*k);
-        }
-
-        keys.sort();
-
-        for k in &keys {
-            data.push(*hmap.get(k).unwrap());
-        }
-
-        return SparseMatrix::new(n, m, keys, data);
     }
     
-    return SparseMatrix::new(0, 0, keys, data);
+    return SparseMatrix::new(n, m, keys, data);
 }
 
 pub fn convert_to_array(a:&SparseMatrix) -> Vec<f64> {
@@ -502,8 +598,9 @@ pub fn convert_to_array(a:&SparseMatrix) -> Vec<f64> {
 }
 
 pub fn run() {
-    let n = 1000;
-    let m = 1000;
+    let n = 500;
+    let m = 500;
+    let k = 0; //4*n*m/5;
 
     let mut rng = thread_rng();
     let normal:Normal<f64> = Normal::new(0.0, 1.0).ok().unwrap();
@@ -518,12 +615,12 @@ pub fn run() {
 
     let uniform = Uniform::new(0, n*m);
 
-    for _ in 0..999000 {
+    for _ in 0..k {
         let j = uniform.sample(&mut rng);
         a[j] = 0.0;
     }
 
-    for _ in 0..999000 {
+    for _ in 0..k {
         let j = uniform.sample(&mut rng);
         b[j] = 0.0;
     }
@@ -531,34 +628,40 @@ pub fn run() {
     let c = SparseMatrix::create(n, m, &a);
     let d = SparseMatrix::create(m, n, &b);
 
-    let e = get_sub_mat(&c, 1, 3, 2, 4);
-    let f = convert_to_array(&e);
+    // let e = get_sub_mat(&c, 1, 3, 2, 4);
+    // let f = convert_to_array(&e);
 
-    let g = add(&c, &d);
-    let h = convert_to_array(&g);
+    // let g = add(&c, &d);
+    // let h = convert_to_array(&g);
 
-    let j = mul(&c, &d);
-    let k = convert_to_array(&j);
+    // let j = mul(&c, &d);
+    // let k = convert_to_array(&j);
 
+    // let c1 = Arc::new(c);
+    // let d1 = Arc::new(d);
+
+    let start_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
     let l = dot(&c, &d);
-    let m = convert_to_array(&l);
+    let end_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
+    println!("{:?}", end_time-start_time);
+    // let m = convert_to_array(&l);
 
-    let q = transpose(&c);
-    let y = convert_to_array(&q);
+    // let q = transpose(&c);
+    // let y = convert_to_array(&q);
 
-    println!("{:?}", a);
-    println!();
-    println!("{:?}", b);
-    println!();
-    println!("{:?}", f);
-    println!();
-    println!("{:?}", h);
-    println!();
-    println!("{:?}", k);
-    println!();
-    println!("{:?}", m);
-    println!();
-    println!("{:?}", y);
+    // println!("{:?}", a);
+    // println!();
+    // println!("{:?}", b);
+    // println!();
+    // println!("{:?}", f);
+    // println!();
+    // println!("{:?}", h);
+    // println!();
+    // println!("{:?}", k);
+    // println!();
+    // println!("{:?}", m);
+    // println!();
+    // println!("{:?}", y);
 }
 
 
