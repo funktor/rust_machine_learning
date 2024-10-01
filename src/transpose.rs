@@ -3,10 +3,13 @@ use rand_distr::{Distribution, Normal};
 use rand::thread_rng;
 
 pub fn transpose(a:&[f64], n:usize, m:usize) -> Vec<f64> {
-    let mut b: Vec<f64> = vec![0.0;n*m];
+    let mut b = a.to_vec();
+    
     for i in 0..n {
-        for j in 0..m {
-            b[j*n+i] = a[i*m+j];
+        for j in i+1..m {
+            let k = b[i*m+j];
+            b[i*m+j] = b[j*n+i];
+            b[j*n+i] = k;
         }
     }
 
@@ -26,6 +29,6 @@ pub fn run() {
         a[i] = normal.sample(&mut rng);
     }
 
-    let b = transpose(&a, n, m);
-    println!("{:?}", b);
+    transpose(&mut a, n, m);
+    println!("{:?}", a);
 }

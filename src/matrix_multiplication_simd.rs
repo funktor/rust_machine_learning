@@ -54,6 +54,47 @@ pub fn matrix_multiply_simd(inp1:&[f64], inp2:&[f64], n:usize, m:usize, p:usize)
     return out;
 }
 
+pub fn matrix_multiply_simd_slices(inp1:&[f64], inp2:&[f64], _n:usize, m:usize, p:usize, x11:usize, x12:usize, y11:usize, y12:usize, x21:usize, x22:usize, y21:usize, y22:usize) -> Vec<f64> {
+    const LANES:usize = 64;
+
+    let n1 = x12-x11+1;
+    let m1 = y12-y11+1;
+
+    let n2 = x22-x21+1;
+    let m2 = y22-y21+1;
+
+    let mut out:Vec<f64> = vec![0.0;n1*m2];
+
+    if m1 == n2 {
+        for i in x11..x12+1 {
+            let mut l = x21;
+            for k in y11..y12+1 {
+                let a:Simd<f64, LANES> = Simd::splat(inp1[i*m+k]);
+                for j in (y21..y22+1).step_by(LANES) {
+                    if l*p+j+LANES > (l+1)*p {
+                        let mut r:usize = (i-x11)*p+(j-y21);
+                        for h in l*p+j..(l+1)*p {
+                            out[r] += inp1[i*m+k]*inp2[h];
+                            r += 1;
+                        }
+                    }
+                    else {
+                        let x:Simd<f64, LANES> = Simd::from_slice(&inp2[l*p+j..l*p+j+LANES]);
+                        let z:Simd<f64, LANES> = a*x;
+                        let mut c:Simd<f64, LANES> = Simd::from_slice(&out[(i-x11)*p+(j-y21)..(i-x11)*p+(j-y21)+LANES]);
+                        c += z;
+                        Simd::copy_to_slice(c, &mut out[(i-x11)*p+(j-y21)..(i-x11)*p+(j-y21)+LANES]);
+                    }
+                }
+                l += 1;
+            }
+        }
+    }
+
+    return out;
+}
+
+
 pub fn run() {
     // Matrix multiplication
     let n:usize = 101;
