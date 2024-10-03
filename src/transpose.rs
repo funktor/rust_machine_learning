@@ -3,13 +3,11 @@ use rand_distr::{Distribution, Normal};
 use rand::thread_rng;
 
 pub fn transpose(a:&[f64], n:usize, m:usize) -> Vec<f64> {
-    let mut b = a.to_vec();
-    
+    let mut b = vec![0.0;n*m];
+
     for i in 0..n {
-        for j in i+1..m {
-            let k = b[i*m+j];
-            b[i*m+j] = b[j*n+i];
-            b[j*n+i] = k;
+        for j in 0..m {
+            b[j*n+i] = a[i*m+j];
         }
     }
 

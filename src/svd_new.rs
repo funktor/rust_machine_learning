@@ -206,11 +206,30 @@ pub fn householder_reflection_bidiagonalization(a:&[f64], n:usize, m:usize) -> (
 
 pub fn eigenvalue_bidiagonal(a:&[f64], n:usize, m:usize) -> f64{
     let h = min(n, m);
+
+    let mut d1 = 0.0;
+    let mut d2 = 0.0;
+    let mut d3 = 0.0;
+    let mut d4 = 0.0;
+
+    if h >= 3 {
+        d1 = a[(h-3)*m+h-2];
+    }
+
+    if h >= 2 {
+        d2 = a[(h-2)*m+h-2];
+        d3 = a[(h-2)*m+h-1];
+    }
+
+    if h >= 1 {
+        d4 = a[(h-1)*m+h-1];
+    }
+
     
-    let a1 = a[(h-2)*m+h-2]*a[(h-2)*m+h-2]+a[(h-3)*m+h-2]*a[(h-3)*m+h-2];
-    let a2 = a[(h-2)*m+h-2]*a[(h-2)*m+h-1];
-    let a3 = a[(h-2)*m+h-2]*a[(h-2)*m+h-1];
-    let a4 = a[(h-1)*m+h-1]*a[(h-1)*m+h-1]+a[(h-2)*m+h-1]*a[(h-2)*m+h-1];
+    let a1 = d2*d2 + d1*d1;
+    let a2 = d2*d3;
+    let a3 = d2*d3;
+    let a4 = d4*d4 + d3*d3;
 
     let u = 1.0;
     let b = -(a1+a4);
@@ -292,14 +311,14 @@ pub fn qr(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Vec<f64>) {
     return (q, r);
 }
 
-pub fn golub_kahan(a:&mut [f64], l:&mut [f64], r:&mut [f64], n:usize, m:usize, k1:usize, i:usize, j:usize) {
-    let mu = eigenvalue_bidiagonal(&sub_mat(&a, k1, k1, i, j, i, j), j-i+1, j-i+1);
+pub fn golub_kahan(a:&mut [f64], l:&mut [f64], r:&mut [f64], n:usize, m:usize, z:usize, i:usize, j:usize) {
+    let mu = eigenvalue_bidiagonal(&sub_mat(&a, z, z, i, j, i, j), j-i+1, j-i+1);
     
-    let u = a[i*k1+i];
-    let v = a[i*k1+i+1];
+    let u = a[i*z+i];
+    let v = a[i*z+i+1];
     
-    a[i*k1+i] = u*u-mu;
-    a[i*k1+i+1] = u*v;
+    a[i*z+i] = u*u-mu;
+    a[i*z+i+1] = u*v;
     
     for k in i..j {
         let mut x;
@@ -314,15 +333,15 @@ pub fn golub_kahan(a:&mut [f64], l:&mut [f64], r:&mut [f64], n:usize, m:usize, k
             y = i+1; 
         }
 
-        let b = givens_right_rotation(&a, k1, k1, x, y);
+        let b = givens_right_rotation(&a, z, z, x, y);
 
         if k == i {
-            a[i*k1+i] = u;
-            a[i*k1+i+1] = v;
+            a[i*z+i] = u;
+            a[i*z+i+1] = v;
         }
 
-        givens_right_rotation_multiply(a, k1, k1, b.0, b.1, x, y);
-        givens_right_rotation_multiply(r, m, k1, b.0, b.1, x, y);
+        givens_right_rotation_multiply(a, z, z, b.0, b.1, x, y);
+        givens_right_rotation_multiply(r, m, z, b.0, b.1, x, y);
 
         if k > i {
             x = k+1;
@@ -333,10 +352,10 @@ pub fn golub_kahan(a:&mut [f64], l:&mut [f64], r:&mut [f64], n:usize, m:usize, k
             y = i;
         }
             
-        let b = givens_left_rotation(&a, k1, k1, x, y);
+        let b = givens_left_rotation(&a, z, z, x, y);
 
-        givens_left_rotation_multiply(a, k1, k1, b.0, b.1, x, y);
-        givens_left_rotation_multiply(l, k1, n, b.0, b.1, x, y);
+        givens_left_rotation_multiply(a, z, z, b.0, b.1, x, y);
+        givens_left_rotation_multiply(l, z, n, b.0, b.1, x, y);
     }
 }
 
@@ -351,7 +370,7 @@ pub fn golub_reisch_svd(a:&[f64], mut n:usize, mut m:usize) -> (Vec<f64>, Vec<f6
         n = m;
         m = g;
     }
-        
+    
     let hr = householder_reflection_bidiagonalization(&a1, n, m);
     let r = min(n, m);
 
@@ -381,7 +400,7 @@ pub fn golub_reisch_svd(a:&[f64], mut n:usize, mut m:usize) -> (Vec<f64>, Vec<f6
         }
 
         let mut p = 0;
-        for i in (0..q-1).rev() {
+        for i in (0..q).rev() {
             if a1[i*r+i+1].abs() <= eps {
                 p = i+1;
                 break;
@@ -421,9 +440,28 @@ pub fn golub_reisch_svd(a:&[f64], mut n:usize, mut m:usize) -> (Vec<f64>, Vec<f6
     return (transpose(&u, r, n), a1, transpose(&v, m, r));
 }
 
+pub fn randomized_svd(a:&[f64], n:usize, m:usize, k:usize) -> (Vec<f64>, Vec<f64>, Vec<f64>){
+    let l = min(k+10, m);
+    let mut rng = thread_rng();
+    let normal:Normal<f64> = Normal::new(0.0, 1.0).ok().unwrap();
+    
+    let mut p:Vec<f64> = vec![0.0;m*l];
+
+    for i in 0..m*l {
+        p[i] = normal.sample(&mut rng);
+    }
+
+    let b = matrix_multiply_simd(&a, &p, n, m, l);
+    let (q, r) = qr(&b, n, l);
+    let c = &matrix_multiply_simd(&transpose(&q, n, n), &a, n, n, m);
+    let (mut u, s, v) = golub_reisch_svd(&c, n, m);
+    u = matrix_multiply_simd(&q, &u, n, n, n);
+    return (u, s, v);
+}
+
 pub fn run() {
-    let n = 5;
-    let m = 5;
+    let n = 500;
+    let m = 500;
 
     let mut rng = thread_rng();
     let normal:Normal<f64> = Normal::new(0.0, 1.0).ok().unwrap();
@@ -439,14 +477,15 @@ pub fn run() {
     let b = golub_reisch_svd(&a, n, m);
     let end_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
     println!("{:?}", end_time-start_time);
-    let mut c = matrix_multiply_simd(&transpose(&b.0, n, n), &b.1, n, n, m);
-    c = matrix_multiply_simd(&c, &transpose(&b.2, m, m), n, m, m);
+    let r = min(n, m);
+    // let mut c = matrix_multiply_simd(&b.0, &b.1, n, r, r);
+    // c = matrix_multiply_simd(&c, &b.2, n, r, m);
 
-    println!("{:?}", a);
-    println!();
-    println!("{:?}", b.1);
-    println!();
-    println!("{:?}", c);
+    // println!("{:?}", a);
+    // println!();
+    // println!("{:?}", b.1);
+    // println!();
+    // println!("{:?}", c);
 }
 
 
