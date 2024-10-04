@@ -142,61 +142,106 @@ pub fn householder_reflection_bidiagonalization(a:&[f64], n:usize, m:usize) -> (
 
     for i in 0..min(n, m) {
         let n1 = n-i;
-        
-        let x = sub_mat(&r, n, m, i, n-1, i, i);
-        let x_norm = norm(&x, n1);
-        let alpha = -sgn(x[0])*x_norm;
-        let mut e = vec![0.0;n1];
-        e[0] = alpha;
-        let v = add(&x, &e, n1);
-        let z = norm(&v, n1);
+
+        let mut nm = 0.0;
+        for i1 in i..n {
+            nm += r[i1*m+i]*r[i1*m+i];
+        }
+
+        let mut v = vec![0.0;n1];
+        let mut z = 0.0;
+        for i1 in i..n {
+            if i1 == i {
+                v[i1-i] = r[i1*m+i]-sgn(r[i*m+i])*nm.sqrt();
+            }
+            else {
+                v[i1-i] = r[i1*m+i];
+            }
+            z += v[i1-i]*v[i1-i];
+        }
+
+        z = z.sqrt();
 
         if z > 0.0 {
             let u = mul_const(&v, 1.0/z, n1);
-            let r_sub = sub_mat(&r, n, m, i, n-1, i, m-1);
 
-            let mut w = matrix_multiply_simd(&u, &r_sub, 1, n1, m-i);
-            w = matrix_multiply_simd(&u, &w, n1, 1, m-i);
-            w = mul_const(&w, 2.0, n1*(m-i));
-            w = sub(&r_sub, &w, n1*(m-i));
-            copy_sub_mat(&mut r, &w, n, m, i, n-1, i, m-1);
+            let mut r1 = vec![0.0;m-i];
+            for i1 in i..n {
+                for j1 in i..m {
+                    r1[j1-i] += u[i1-i]*r[i1*m+j1];
+                }
+            }
 
-            let mut u1 = vec![0.0;n];
-            u1[i..].copy_from_slice(&u);
+            for i1 in i..n {
+                for j1 in i..m {
+                    r[i1*m+j1] -= 2.0*u[i1-i]*r1[j1-i];
+                }
+            }
 
-            let mut q = matrix_multiply_simd(&u1, &q_lt, 1, n, n);
-            q = matrix_multiply_simd(&u1, &q, n, 1, n);
-            q = mul_const(&q, 2.0, n*n);
-            q_lt = sub(&q_lt, &q, n*n);
+            let mut q1 = vec![0.0;m];
+            for i1 in i..n {
+                for j1 in 0..m {
+                    q1[j1] += u[i1-i]*q_lt[i1*m+j1];
+                }
+            }
+
+            for i1 in i..n {
+                for j1 in 0..m {
+                    q_lt[i1*m+j1] -= 2.0*u[i1-i]*q1[j1];
+                }
+            }
         }
 
         if m-i-1 > 0 {
             let n1 = m-i-1;
-            let x = &r[i*m+(i+1)..(i+1)*m];
-            let x_norm = norm(&x, n1);
-            let alpha = -sgn(x[0])*x_norm;
-            let mut e = vec![0.0;n1];
-            e[0] = alpha;
-            let v = add(&x, &e, n1);
-            let z = norm(&v, n1);
+
+            let mut nm = 0.0;
+            for j1 in i+1..m {
+                nm += r[i*m+j1]*r[i*m+j1];
+            }
+
+            let mut v = vec![0.0;n1];
+            let mut z = 0.0;
+            for j1 in i+1..n {
+                if j1 == i+1 {
+                    v[j1-i-1] = r[i*m+j1]-sgn(r[i*m+j1])*nm.sqrt();
+                }
+                else {
+                    v[j1-i-1] = r[i*m+j1];
+                }
+                z += v[j1-i-1]*v[j1-i-1];
+            }
+
+            z = z.sqrt();
 
             if z > 0.0 {
                 let u = mul_const(&v, 1.0/z, n1);
-                let r_sub = sub_mat(&r, n, m, i, n-1, i+1, m-1);
 
-                let mut w = matrix_multiply_simd(&r_sub, &u, n-i, n1, 1);
-                w = matrix_multiply_simd(&w, &u, n-i, 1, n1);
-                w = mul_const(&w, 2.0, n1*(n-i));
-                w = sub(&r_sub, &w, n1*(n-i));
-                copy_sub_mat(&mut r, &w, n, m, i, n-1, i+1, m-1);
+                let mut r1 = vec![0.0;n-i];
+                for i1 in i..n {
+                    for j1 in i+1..m {
+                        r1[i1-i] += u[j1-i-1]*r[i1*m+j1];
+                    }
+                }
+
+                for i1 in i..n {
+                    for j1 in i+1..m {
+                        r[i1*m+j1] -= 2.0*u[j1-i-1]*r1[i1-i];
+                    }
+                }
                 
-                let mut u1 = vec![0.0;m];
-                u1[i+1..].copy_from_slice(&u);
+                let mut q1 = vec![0.0;n];
+                for i1 in 0..n {
+                    for j1 in i+1..m {
+                        q1[i1] += u[j1-i-1]*q_rt[i1*m+j1];
+                    }
+                }
 
-                let mut q = matrix_multiply_simd(&q_rt, &u1, m, m, 1);
-                q = matrix_multiply_simd(&q, &u1, m, 1, m);
-                q = mul_const(&q, 2.0, m*m);
-                q_rt = sub(&q_rt, &q, m*m);
+                for i1 in 0..n {
+                    for j1 in i+1..m {
+                        q_rt[i1*m+j1] -= 2.0*u[j1-i-1]*q1[i1];
+                    }
+                }
             }
         }
     }
@@ -474,12 +519,12 @@ pub fn run() {
 
     // let a_s = SparseMatrix::create(n, m, &a);
     let start_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
-    let b = golub_reisch_svd(&a, n, m);
+    let b = householder_reflection_bidiagonalization(&a, n, m);
     let end_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
     println!("{:?}", end_time-start_time);
-    let r = min(n, m);
-    // let mut c = matrix_multiply_simd(&b.0, &b.1, n, r, r);
-    // c = matrix_multiply_simd(&c, &b.2, n, r, m);
+    // let r = min(n, m);
+    // let mut c = matrix_multiply_simd(&transpose(&b.0, n, n), &b.1, n, n, m);
+    // c = matrix_multiply_simd(&c, &transpose(&b.2, m, m), n, m, m);
 
     // println!("{:?}", a);
     // println!();
