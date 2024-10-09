@@ -2,11 +2,12 @@
 use crate::copy::copy;
 use crate::transpose::transpose;
 use crate::matrix_multiplication_simd::{matrix_multiply_simd, matrix_multiply_simd_slices};
+use std::f64::MIN_POSITIVE;
 // use crate::sparse_matrix::*;
 use std::simd::prelude::*;
 use rand_distr::{Distribution, Normal};
 use rand::thread_rng;
-use std::cmp::min;
+use std::cmp::{min, max};
 use std::time::SystemTime;
 
 fn sgn(x:f64) -> f64 {
@@ -25,25 +26,52 @@ fn identity(n:usize) -> Vec<f64> {
     return q;
 }
 
-pub fn norm(a:&[f64], n:usize) -> f64{
-    const LANES:usize = 64;
-    let mut s = 0.0;
-
-    for i in (0..n).step_by(LANES) {
-        if i+LANES > n {
-            for j in i..n {
-                s += a[j]*a[j];
-            }
-        }
-        else {
-            let x:Simd<f64, LANES> = Simd::from_slice(&a[i..i+LANES]);
-            let y = x*x;
-            s += y.reduce_sum();
-        }
+fn my_sqrt(x:f64) -> f64 {
+    if x > 0.0 {
+        return x.sqrt();
     }
-
-    return s.sqrt();
+    return 0.0;
 }
+
+// pub fn norm_row(a:&[f64], m:usize, i:usize, j1:usize, j2:usize) -> f64{
+//     const LANES:usize = 64;
+//     let mut s = 0.0;
+
+//     for k in (i*m+j1..i*m+j2+1).step_by(LANES) {
+//         if k+LANES > i*m+j2+1 {
+//             for h in k..i*m+j2+1 {
+//                 s += a[h]*a[h];
+//             }
+//         }
+//         else {
+//             let x:Simd<f64, LANES> = Simd::from_slice(&a[k..k+LANES]);
+//             let y = x*x;
+//             s += y.reduce_sum();
+//         }
+//     }
+
+//     return s.sqrt();
+// }
+
+// pub fn norm_col(a:&[f64], m:usize, j:usize, i1:usize, i2:usize) -> f64{
+//     const LANES:usize = 64;
+//     let mut s = 0.0;
+
+//     for k in (i*m+j1..i*m+j2+1).step_by(LANES) {
+//         if k+LANES > i*m+j2+1 {
+//             for h in k..i*m+j2+1 {
+//                 s += a[h]*a[h];
+//             }
+//         }
+//         else {
+//             let x:Simd<f64, LANES> = Simd::from_slice(&a[k..k+LANES]);
+//             let y = x*x;
+//             s += y.reduce_sum();
+//         }
+//     }
+
+//     return s.sqrt();
+// }
 
 pub fn sub_mat(a:&[f64], _n:usize, m:usize, r_start:usize, r_end:usize, c_start:usize, c_end:usize) -> Vec<f64> {
     let mut b:Vec<f64> = vec![0.0;(r_end-r_start+1)*(c_end-c_start+1)];
@@ -134,6 +162,122 @@ pub fn mul_const(inp:&[f64], x:f64, n:usize) -> Vec<f64>{
     return out;
 }
 
+pub fn householder_reflection_left_multiply(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Vec<f64>) {
+    let mut q_lt = identity(n);
+    let mut r = a.to_vec();
+    let w = min(n, m);
+
+    for i in 0..w {
+        let n1 = n-i;
+
+        let mut nm = 0.0;
+        let mut u = vec![0.0;n1];
+
+        for i1 in i..n {
+            nm += r[i1*m+i]*r[i1*m+i];
+            u[i1-i] = r[i1*m+i];
+        }
+
+        u[0] -= sgn(r[i*m+i])*my_sqrt(nm);
+        let z = my_sqrt(nm-r[i*m+i]*r[i*m+i]+u[0]*u[0]);
+
+        if z > 0.0 {
+            for i1 in 0..n1 {
+                u[i1] = u[i1]/z;
+            }
+
+            let mut r1 = vec![0.0;m-i];
+            for i1 in i..n {
+                for j1 in i..m {
+                    r1[j1-i] += u[i1-i]*r[i1*m+j1];
+                }
+            }
+
+            // let r1 = matrix_multiply_simd_slices(&u, &r, 1, n1, m, 0, 0, 0, n1-1, i, n-1, i, m-1);
+
+            for i1 in i..n {
+                for j1 in i..m {
+                    r[i1*m+j1] -= 2.0*u[i1-i]*r1[j1-i];
+                }
+            }
+
+            let mut q1 = vec![0.0;n];
+            for i1 in i..n {
+                for j1 in 0..n {
+                    q1[j1] += u[i1-i]*q_lt[i1*n+j1];
+                }
+            }
+
+            for i1 in i..n {
+                for j1 in 0..n {
+                    q_lt[i1*n+j1] -= 2.0*u[i1-i]*q1[j1];
+                }
+            }
+        }
+    }
+
+    return (q_lt, r);
+}
+
+pub fn householder_reflection_right_multiply(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Vec<f64>) {
+    let mut q_rt = identity(m);
+    let mut r = a.to_vec();
+
+    for i in 0..min(n, m) {
+        if m-i-1 > 0 {
+            let n1 = m-i-1;
+
+            let mut nm = 0.0;
+            let mut u = vec![0.0;n1];
+
+            for j1 in i+1..m {
+                nm += r[i*m+j1]*r[i*m+j1];
+                u[j1-i-1] = r[i*m+j1];
+            }
+
+            u[0] -= sgn(r[i*m+i+1])*my_sqrt(nm);
+            let z = my_sqrt(nm-r[i*m+i+1]*r[i*m+i+1]+u[0]*u[0]);
+
+            if z > 0.0 {
+                for i1 in 0..n1 {
+                    u[i1] = u[i1]/z;
+                }
+
+                let mut r1 = vec![0.0;n-i];
+                for i1 in i..n {
+                    for j1 in i+1..m {
+                        r1[i1-i] += u[j1-i-1]*r[i1*m+j1];
+                    }
+                }
+
+                // let r1 = matrix_multiply_simd_slices(&r, &u, n, m, 1, i, n-1, i+1, m-1, 0, n1-1, 0, 0);
+
+                for i1 in i..n {
+                    for j1 in i+1..m {
+                        r[i1*m+j1] -= 2.0*u[j1-i-1]*r1[i1-i];
+                    }
+                }
+                
+                let mut q1 = vec![0.0;m];
+                for i1 in 0..m {
+                    for j1 in i+1..m {
+                        q1[i1] += u[j1-i-1]*q_rt[i1*m+j1];
+                    }
+                }
+
+                for i1 in 0..m {
+                    for j1 in i+1..m {
+                        q_rt[i1*m+j1] -= 2.0*u[j1-i-1]*q1[i1];
+                    }
+                }
+            }
+        }
+    }
+
+    return (q_rt, r);
+}
+
+
 pub fn householder_reflection_bidiagonalization(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
     let mut q_lt = identity(n);
     let mut q_rt = identity(m);
@@ -144,26 +288,20 @@ pub fn householder_reflection_bidiagonalization(a:&[f64], n:usize, m:usize) -> (
         let n1 = n-i;
 
         let mut nm = 0.0;
+        let mut u = vec![0.0;n1];
+
         for i1 in i..n {
             nm += r[i1*m+i]*r[i1*m+i];
+            u[i1-i] = r[i1*m+i];
         }
 
-        let mut v = vec![0.0;n1];
-        let mut z = 0.0;
-        for i1 in i..n {
-            if i1 == i {
-                v[i1-i] = r[i1*m+i]-sgn(r[i*m+i])*nm.sqrt();
-            }
-            else {
-                v[i1-i] = r[i1*m+i];
-            }
-            z += v[i1-i]*v[i1-i];
-        }
-
-        z = z.sqrt();
+        u[0] -= sgn(r[i*m+i])*my_sqrt(nm);
+        let z = my_sqrt(nm-r[i*m+i]*r[i*m+i]+u[0]*u[0]);
 
         if z > 0.0 {
-            let u = mul_const(&v, 1.0/z, n1);
+            for i1 in 0..n1 {
+                u[i1] = u[i1]/z;
+            }
 
             let mut r1 = vec![0.0;m-i];
             for i1 in i..n {
@@ -178,16 +316,16 @@ pub fn householder_reflection_bidiagonalization(a:&[f64], n:usize, m:usize) -> (
                 }
             }
 
-            let mut q1 = vec![0.0;m];
+            let mut q1 = vec![0.0;n];
             for i1 in i..n {
-                for j1 in 0..m {
-                    q1[j1] += u[i1-i]*q_lt[i1*m+j1];
+                for j1 in 0..n {
+                    q1[j1] += u[i1-i]*q_lt[i1*n+j1];
                 }
             }
 
             for i1 in i..n {
-                for j1 in 0..m {
-                    q_lt[i1*m+j1] -= 2.0*u[i1-i]*q1[j1];
+                for j1 in 0..n {
+                    q_lt[i1*n+j1] -= 2.0*u[i1-i]*q1[j1];
                 }
             }
         }
@@ -196,27 +334,21 @@ pub fn householder_reflection_bidiagonalization(a:&[f64], n:usize, m:usize) -> (
             let n1 = m-i-1;
 
             let mut nm = 0.0;
+            let mut u = vec![0.0;n1];
+
             for j1 in i+1..m {
                 nm += r[i*m+j1]*r[i*m+j1];
+                u[j1-i-1] = r[i*m+j1];
             }
 
-            let mut v = vec![0.0;n1];
-            let mut z = 0.0;
-            for j1 in i+1..n {
-                if j1 == i+1 {
-                    v[j1-i-1] = r[i*m+j1]-sgn(r[i*m+j1])*nm.sqrt();
-                }
-                else {
-                    v[j1-i-1] = r[i*m+j1];
-                }
-                z += v[j1-i-1]*v[j1-i-1];
-            }
-
-            z = z.sqrt();
+            u[0] -= sgn(r[i*m+i+1])*my_sqrt(nm);
+            let z = my_sqrt(nm-r[i*m+i+1]*r[i*m+i+1]+u[0]*u[0]);
 
             if z > 0.0 {
-                let u = mul_const(&v, 1.0/z, n1);
-
+                for i1 in 0..n1 {
+                    u[i1] = u[i1]/z;
+                }
+                
                 let mut r1 = vec![0.0;n-i];
                 for i1 in i..n {
                     for j1 in i+1..m {
@@ -230,14 +362,14 @@ pub fn householder_reflection_bidiagonalization(a:&[f64], n:usize, m:usize) -> (
                     }
                 }
                 
-                let mut q1 = vec![0.0;n];
-                for i1 in 0..n {
+                let mut q1 = vec![0.0;m];
+                for i1 in 0..m {
                     for j1 in i+1..m {
                         q1[i1] += u[j1-i-1]*q_rt[i1*m+j1];
                     }
                 }
 
-                for i1 in 0..n {
+                for i1 in 0..m {
                     for j1 in i+1..m {
                         q_rt[i1*m+j1] -= 2.0*u[j1-i-1]*q1[i1];
                     }
@@ -249,8 +381,8 @@ pub fn householder_reflection_bidiagonalization(a:&[f64], n:usize, m:usize) -> (
     return (q_lt, r, q_rt);
 }
 
-pub fn eigenvalue_bidiagonal(a:&[f64], n:usize, m:usize) -> f64{
-    let h = min(n, m);
+pub fn eigenvalue_bidiagonal(a:&[f64], n:usize, m:usize, i1:usize, i2:usize, j1:usize, j2:usize) -> f64{
+    let h = min(i2, j2)+1;
 
     let mut d1 = 0.0;
     let mut d2 = 0.0;
@@ -280,8 +412,8 @@ pub fn eigenvalue_bidiagonal(a:&[f64], n:usize, m:usize) -> f64{
     let b = -(a1+a4);
     let c = a1*a4-a2*a3;
 
-    let v1 = (-b + (b*b-4.0*u*c).sqrt())/(2.0*u);
-    let v2 = (-b - (b*b-4.0*u*c).sqrt())/(2.0*u);
+    let v1 = (-b + my_sqrt(b*b-4.0*u*c))/(2.0*u);
+    let v2 = (-b - my_sqrt(b*b-4.0*u*c))/(2.0*u);
 
     if (v1-a4).abs() < (v2-a4).abs() {
         return v1;
@@ -290,54 +422,90 @@ pub fn eigenvalue_bidiagonal(a:&[f64], n:usize, m:usize) -> f64{
     return v2;
 }
 
-pub fn givens_right_rotation(a:&[f64], _n:usize, m:usize, i:usize, j:usize) -> (f64, f64) {
+pub fn givens_right_rotation(a:&[f64], _n:usize, m:usize, i:usize, j:usize, flip:bool) -> (f64, f64) {
     let x = a[i*m+j-1];
     let y = a[i*m+j];
-    let r = (x*x + y*y).sqrt();
+    let r = my_sqrt(x*x + y*y);
+
+    if flip {
+        return (y/r, -x/r);
+    }
 
     return (x/r, -y/r);
 }
 
-pub fn givens_right_rotation_multiply(a:&mut [f64], n:usize, m:usize, c:f64, s:f64, _i:usize, j:usize) {
-    let b = vec![c, s, -s, c];
-    let d = matrix_multiply_simd_slices(&a, &b, n, m, 2, 0, n-1, j-1, j, 0, 1, 0, 1);
-    copy_sub_mat(a, &d, n, m, 0, n-1, j-1, j);
+pub fn givens_right_rotation_multiply(a:&mut [f64], n:usize, m:usize, c:f64, s:f64, _i:usize, j:usize, r1:usize, r2:usize, c1:usize, c2:usize) {
+    for i1 in r1..r2+1 {
+        let p = a[i1*m+j-1];
+        let q = a[i1*m+j];
+        a[i1*m+j-1] = c*p - s*q;
+        a[i1*m+j] = s*p + c*q;
+    }
 }
 
-pub fn givens_left_rotation(a:&[f64], _n:usize, m:usize, i:usize, j:usize) -> (f64, f64) {
+pub fn givens_left_rotation(a:&[f64], _n:usize, m:usize, i:usize, j:usize, flip:bool) -> (f64, f64) {
     let x = a[(i-1)*m+j];
     let y = a[i*m+j];
-    let r = (x*x + y*y).sqrt();
+    let r = my_sqrt(x*x + y*y);
+
+    if flip {
+        return (y/r, -x/r);
+    }
 
     return (x/r, -y/r);
 }
 
-pub fn givens_left_rotation_multiply(a:&mut [f64], _n:usize, m:usize, c:f64, s:f64, i:usize, _j:usize) {
-    let b = vec![c, -s, s, c];
-    let d = matrix_multiply_simd(&b, &a[(i-1)*m..(i+1)*m], 2, 2, m);
-    copy(&d, &mut a[(i-1)*m..(i+1)*m], 2*m);
+pub fn givens_left_rotation_multiply(a:&mut [f64], _n:usize, m:usize, c:f64, s:f64, i:usize, _j:usize, r1:usize, r2:usize, c1:usize, c2:usize) {
+    for j1 in c1..c2+1 {
+        let p = a[(i-1)*m+j1];
+        let q = a[i*m+j1];
+        a[(i-1)*m+j1] = c*p - s*q;
+        a[i*m+j1] = s*p + c*q;
+    }
 }
 
-pub fn givens_rotation_qr(a:&[f64], n:usize, m:usize,) -> (Vec<f64>, Vec<f64>) {
-    let mut q = vec![0.0;n*n];
+pub fn givens_rotation_qr(a:&[f64], n:usize, m:usize,) -> (Vec<f64>, Vec<f64>, usize, usize, usize) {
+    if n < m {
+        let mut r = transpose(&a, n, m);
+        let mut q = identity(m);
 
-    for i in 0..n {
-        q[i*(n+1)] = 1.0;
-    }
-
-    let mut r = a.to_vec();
-
-    for j in 0..m {
-        for i in (j+1..n).rev() {
-            if r[i*m+j].abs() > 1e-10 {
-                let b = givens_left_rotation(&r, n, m, i, j);
-                givens_left_rotation_multiply(&mut r, n, m, b.0, b.1, i, j);
-                givens_left_rotation_multiply(&mut q, n, n, b.0, b.1, i, j);
+        for j in 0..n {
+            for i in (j+1..m).rev() {
+                let b = givens_left_rotation(&r, m, n, i, j, false);
+                givens_left_rotation_multiply(&mut r, m, n, b.0, b.1, i, j, 0, m-1, 0, n-1);
+                givens_left_rotation_multiply(&mut q, m, m, b.0, b.1, i, j, 0, m-1, 0, m-1);
             }
         }
-    }
 
-    return (q, r);
+        return (transpose(&r, m, n), q, n, m, m);
+    }
+    else {
+        let mut r = a.to_vec();
+        let mut q = identity(n);
+
+        for j in 0..m {
+            for i in (j+1..n).rev() {
+                let b = givens_left_rotation(&r, n, m, i, j, false);
+                givens_left_rotation_multiply(&mut r, n, m, b.0, b.1, i, j, 0, n-1, 0, m-1);
+                givens_left_rotation_multiply(&mut q, n, n, b.0, b.1, i, j, 0, n-1, 0, n-1);
+            }
+        }
+
+        return (transpose(&q, n, n), r, n, n, m);
+    }
+    
+}
+
+pub fn householder_reflection_qr(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Vec<f64>, usize, usize, usize) {
+    if n < m {
+        let a1 = transpose(&a, n, m);
+        let (q, r) = householder_reflection_left_multiply(&a1, m, n);
+        return (transpose(&r, m, n), q, n, m, m);
+    }
+    else {
+        let (q, r) = householder_reflection_left_multiply(&a, n, m);
+        return (transpose(&q, n, n), r, n, n, m);
+    }
 }
 
 pub fn qr(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Vec<f64>) {
@@ -357,7 +525,7 @@ pub fn qr(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Vec<f64>) {
 }
 
 pub fn golub_kahan(a:&mut [f64], l:&mut [f64], r:&mut [f64], n:usize, m:usize, z:usize, i:usize, j:usize) {
-    let mu = eigenvalue_bidiagonal(&sub_mat(&a, z, z, i, j, i, j), j-i+1, j-i+1);
+    let mu = eigenvalue_bidiagonal(&a, z, z, i, j, i, j);
     
     let u = a[i*z+i];
     let v = a[i*z+i+1];
@@ -378,15 +546,15 @@ pub fn golub_kahan(a:&mut [f64], l:&mut [f64], r:&mut [f64], n:usize, m:usize, z
             y = i+1; 
         }
 
-        let b = givens_right_rotation(&a, z, z, x, y);
+        let b = givens_right_rotation(&a, z, z, x, y, false);
 
         if k == i {
             a[i*z+i] = u;
             a[i*z+i+1] = v;
         }
 
-        givens_right_rotation_multiply(a, z, z, b.0, b.1, x, y);
-        givens_right_rotation_multiply(r, m, z, b.0, b.1, x, y);
+        givens_right_rotation_multiply(a, z, z, b.0, b.1, x, y, i, j, i, j);
+        givens_right_rotation_multiply(r, m, z, b.0, b.1, x, y, 0, m-1, 0, z-1);
 
         if k > i {
             x = k+1;
@@ -397,10 +565,10 @@ pub fn golub_kahan(a:&mut [f64], l:&mut [f64], r:&mut [f64], n:usize, m:usize, z
             y = i;
         }
             
-        let b = givens_left_rotation(&a, z, z, x, y);
+        let b = givens_left_rotation(&a, z, z, x, y, false);
 
-        givens_left_rotation_multiply(a, z, z, b.0, b.1, x, y);
-        givens_left_rotation_multiply(l, z, n, b.0, b.1, x, y);
+        givens_left_rotation_multiply(a, z, z, b.0, b.1, x, y, i, j, i, j);
+        givens_left_rotation_multiply(l, z, n, b.0, b.1, x, y, 0, z-1, 0, n-1);
     }
 }
 
@@ -423,7 +591,7 @@ pub fn golub_reisch_svd(a:&[f64], mut n:usize, mut m:usize) -> (Vec<f64>, Vec<f6
     a1 = sub_mat(&hr.1, n, m, 0, r-1, 0, r-1);
     let mut v = sub_mat(&hr.2, m, m, 0, m-1, 0, r-1);
     
-    let eps = 1.0e-10;
+    let eps = 1.0e-7;
     
     loop {
         for i in 0..r-1 {
@@ -434,7 +602,7 @@ pub fn golub_reisch_svd(a:&[f64], mut n:usize, mut m:usize) -> (Vec<f64>, Vec<f6
 
         let mut q = 0;
         for i in (0..r-1).rev() {
-            if a1[i*r+i+1].abs() > eps {
+            if a1[i*r+i+1].abs() > 0.0 {
                 q = i+1;
                 break;
             }
@@ -446,7 +614,7 @@ pub fn golub_reisch_svd(a:&[f64], mut n:usize, mut m:usize) -> (Vec<f64>, Vec<f6
 
         let mut p = 0;
         for i in (0..q).rev() {
-            if a1[i*r+i+1].abs() <= eps {
+            if a1[i*r+i+1].abs() == 0.0 {
                 p = i+1;
                 break;
             }
@@ -455,20 +623,20 @@ pub fn golub_reisch_svd(a:&[f64], mut n:usize, mut m:usize) -> (Vec<f64>, Vec<f6
         let mut flag: bool = false;
         
         for i in p..q {
-            if a1[i*r+i].abs() <= eps {
+            if a1[i*r+i].abs() == 0.0 {
                 flag = true;
                 for j in i+1..r {
-                    let b = givens_left_rotation(&a1, r, r, i, j);
+                    let b = givens_left_rotation(&a1, r, r, i+1, j, true);
                     
-                    givens_left_rotation_multiply(&mut a1, r, r, b.0, b.1, i, j);
-                    givens_left_rotation_multiply(&mut u, r, n, b.0, b.1, i, j);
+                    givens_left_rotation_multiply(&mut a1, r, r, b.0, b.1, i+1, j, 0, r-1, 0, r-1);
+                    givens_left_rotation_multiply(&mut u, r, n, b.0, b.1, i+1, j, 0, r-1, 0, n-1);
                 }
 
                 for j in (0..i).rev() {
-                    let b = givens_right_rotation(&a1, r, r, i, j);
+                    let b = givens_right_rotation(&a1, r, r, i, j, false);
 
-                    givens_right_rotation_multiply(&mut a1, r, r, b.0, b.1, i, j);
-                    givens_right_rotation_multiply(&mut v, m, r, b.0, b.1, i, j);
+                    givens_right_rotation_multiply(&mut a1, r, r, b.0, b.1, i, j, 0, r-1, 0, r-1);
+                    givens_right_rotation_multiply(&mut v, m, r, b.0, b.1, i, j, 0, m-1, 0, r-1);
                 }
             }
         }
@@ -497,10 +665,13 @@ pub fn randomized_svd(a:&[f64], n:usize, m:usize, k:usize) -> (Vec<f64>, Vec<f64
     }
 
     let b = matrix_multiply_simd(&a, &p, n, m, l);
-    let (q, r) = qr(&b, n, l);
-    let c = &matrix_multiply_simd(&transpose(&q, n, n), &a, n, n, m);
-    let (mut u, s, v) = golub_reisch_svd(&c, n, m);
-    u = matrix_multiply_simd(&q, &u, n, n, n);
+    let (mut q, _r, n1, m1, _p1) = givens_rotation_qr(&b, n, l);
+    let w= min(m1, l);
+    q = sub_mat(&q, n1, m1, 0, n1-1, 0, w-1);
+
+    let c = &matrix_multiply_simd(&transpose(&q, n1, w), &a, w, n1, m);
+    let (mut u, s, v) = golub_reisch_svd(&c, w, m);
+    u = matrix_multiply_simd(&q, &u, n1, w, w);
     return (u, s, v);
 }
 
@@ -509,7 +680,7 @@ pub fn run() {
     let m = 500;
 
     let mut rng = thread_rng();
-    let normal:Normal<f64> = Normal::new(0.0, 1.0).ok().unwrap();
+    let normal:Normal<f64> = Normal::new(0.0, 1e-50).ok().unwrap();
     
     let mut a:Vec<f64> = vec![0.0;n*m];
 
@@ -517,20 +688,28 @@ pub fn run() {
         a[i] = normal.sample(&mut rng);
     }
 
+    // for i in 0..n {
+    //     a[i*m+2] = a[i*m+3];
+    // }
+
     // let a_s = SparseMatrix::create(n, m, &a);
     let start_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
-    let b = householder_reflection_bidiagonalization(&a, n, m);
+    let b = golub_reisch_svd(&a, n, m);
     let end_time = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).unwrap().as_millis();
     println!("{:?}", end_time-start_time);
-    // let r = min(n, m);
-    // let mut c = matrix_multiply_simd(&transpose(&b.0, n, n), &b.1, n, n, m);
-    // c = matrix_multiply_simd(&c, &transpose(&b.2, m, m), n, m, m);
+    let r = min(n, m);
+    let mut c = matrix_multiply_simd(&b.0, &b.1, n, r, r);
+    c = matrix_multiply_simd(&c, &b.2, n, r, m);
 
     // println!("{:?}", a);
     // println!();
     // println!("{:?}", b.1);
     // println!();
     // println!("{:?}", c);
+
+    for i in 0..n*m {
+        assert!((c[i]-a[i]).abs() < 1e-5, "Some issue in SVD !!! {}, {}", a[i], c[i]);
+    }
 }
 
 

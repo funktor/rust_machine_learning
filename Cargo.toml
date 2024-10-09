@@ -9,4 +9,8 @@ edition = "2021"
 rand = "0.8.5"
 rand_distr = "0.4.3"
 rayon = "1.10.0"
+tikv-jemallocator = "0.5"
 
+[profile.release]
+codegen-units = 1
+lto = false

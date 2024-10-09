@@ -1,5 +1,7 @@
 #![allow(unused_attributes)]
 #![feature(portable_simd)]
+#[global_allocator]
+static GLOBAL: tikv_jemallocator::Jemalloc = tikv_jemallocator::Jemalloc;
 mod copy;
 mod transpose;
 // mod dot_product_simd;
