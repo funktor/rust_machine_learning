@@ -2,7 +2,8 @@
 use crate::copy::copy;
 use crate::transpose::transpose;
 use crate::matrix_multiplication_simd::{matrix_multiply_simd, matrix_multiply_simd_slices};
-use std::f64::MIN_POSITIVE;
+use std::f64::consts::LOG10_2;
+use std::f64::{MAX, MIN_POSITIVE};
 // use crate::sparse_matrix::*;
 use std::simd::prelude::*;
 use rand_distr::{Distribution, Normal};
@@ -28,9 +29,39 @@ fn identity(n:usize) -> Vec<f64> {
 
 fn my_sqrt(x:f64) -> f64 {
     if x > 0.0 {
-        return x.sqrt();
+        return x.sqrt().abs();
     }
     return 0.0;
+}
+
+fn hypot(x:f64, y:f64) -> f64 {
+    let mut i = 1.0;
+    let mut s = 1.0;
+    let mut r = 0.5;
+    let w;
+    let u;
+    if x.abs() > y.abs() {
+        w = (y/x).abs();
+        u = x.abs();
+    }
+    else {
+        w = (x/y).abs();
+        u = y.abs();
+    }
+    let mut z = w*w;
+
+    loop {
+        let p = (r/i)*z;
+        if p.abs()/s < 0.01 {
+            break;
+        }
+        s += p;
+        r *= 0.5-i;
+        i *= i+1.0;
+        z *= w*w;
+    }
+
+    return s.abs()*u;
 }
 
 // pub fn norm_row(a:&[f64], m:usize, i:usize, j1:usize, j2:usize) -> f64{
@@ -425,7 +456,15 @@ pub fn eigenvalue_bidiagonal(a:&[f64], n:usize, m:usize, i1:usize, i2:usize, j1:
 pub fn givens_right_rotation(a:&[f64], _n:usize, m:usize, i:usize, j:usize, flip:bool) -> (f64, f64) {
     let x = a[i*m+j-1];
     let y = a[i*m+j];
-    let r = my_sqrt(x*x + y*y);
+    let w = x*x+y*y;
+    let r;
+
+    if w < 1e-100 {
+        r = hypot(x, y);
+    }
+    else {
+        r = my_sqrt(w);
+    }
 
     if flip {
         return (y/r, -x/r);
@@ -446,7 +485,15 @@ pub fn givens_right_rotation_multiply(a:&mut [f64], n:usize, m:usize, c:f64, s:f
 pub fn givens_left_rotation(a:&[f64], _n:usize, m:usize, i:usize, j:usize, flip:bool) -> (f64, f64) {
     let x = a[(i-1)*m+j];
     let y = a[i*m+j];
-    let r = my_sqrt(x*x + y*y);
+    let w = x*x+y*y;
+    let r;
+    
+    if w < 1e-100 {
+        r = hypot(x, y);
+    }
+    else {
+        r = my_sqrt(w);
+    }
 
     if flip {
         return (y/r, -x/r);
@@ -591,7 +638,7 @@ pub fn golub_reisch_svd(a:&[f64], mut n:usize, mut m:usize) -> (Vec<f64>, Vec<f6
     a1 = sub_mat(&hr.1, n, m, 0, r-1, 0, r-1);
     let mut v = sub_mat(&hr.2, m, m, 0, m-1, 0, r-1);
     
-    let eps = 1.0e-7;
+    let eps = 1e-7;
     
     loop {
         for i in 0..r-1 {
@@ -630,13 +677,6 @@ pub fn golub_reisch_svd(a:&[f64], mut n:usize, mut m:usize) -> (Vec<f64>, Vec<f6
                     
                     givens_left_rotation_multiply(&mut a1, r, r, b.0, b.1, i+1, j, 0, r-1, 0, r-1);
                     givens_left_rotation_multiply(&mut u, r, n, b.0, b.1, i+1, j, 0, r-1, 0, n-1);
-                }
-
-                for j in (0..i).rev() {
-                    let b = givens_right_rotation(&a1, r, r, i, j, false);
-
-                    givens_right_rotation_multiply(&mut a1, r, r, b.0, b.1, i, j, 0, r-1, 0, r-1);
-                    givens_right_rotation_multiply(&mut v, m, r, b.0, b.1, i, j, 0, m-1, 0, r-1);
                 }
             }
         }
@@ -680,7 +720,7 @@ pub fn run() {
     let m = 500;
 
     let mut rng = thread_rng();
-    let normal:Normal<f64> = Normal::new(0.0, 1e-50).ok().unwrap();
+    let normal:Normal<f64> = Normal::new(0.0, 1.0).ok().unwrap();
     
     let mut a:Vec<f64> = vec![0.0;n*m];
 
