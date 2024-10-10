@@ -1,7 +1,6 @@
 #![allow(dead_code)]
-use crate::dot_product_simd::dot_product_simd;
+use crate::matrix_utils::*;
 use crate::lu_decomposition::lu_decomposition;
-use crate::matrix_multiplication_simd::matrix_multiply_simd;
 use rand_distr::{Distribution, Normal};
 use rand::thread_rng;
 
@@ -62,7 +61,7 @@ pub fn run() {
     let b1 = matrix_multiply_simd(&a, &x, n, n, 1);
 
     for i in 0..n {
-        if (b[i]-b1[i]).abs()/b[i] > 0.01  {
+        if (b[i]-b1[i]).abs()/b[i].abs() > 0.001  {
             println!("{:?}, {:?}, {:?}", i, b[i], b1[i]);
         }
     }

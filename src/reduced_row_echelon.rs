@@ -1,3 +1,4 @@
+#![allow(dead_code)]
 #![feature(portable_simd)]
 use std::simd::prelude::*;
 use rand_distr::{Distribution, Normal};

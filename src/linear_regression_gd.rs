@@ -1,6 +1,5 @@
 #![allow(dead_code)]
-use crate::dot_product_simd::dot_product_simd;
-use crate::matrix_multiplication_simd::matrix_multiply_simd;
+use crate::matrix_utils::*;
 use std::cmp::min;
 use rand::Rng;
 use rand_distr::StandardNormal;

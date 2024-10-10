@@ -1,23 +1,15 @@
 #![allow(dead_code)]
-use crate::copy::copy;
+use crate::matrix_utils::*;
 use crate::row_echelon::swap_rows;
 use crate::row_echelon::reduce_row;
-use crate::matrix_multiplication_simd::matrix_multiply_simd;
 use std::f64::MIN;
 use rand_distr::{Distribution, Normal};
 use rand::thread_rng;
 
 pub fn lu_decomposition(a:&[f64], n:usize, m:usize) -> (Vec<f64>, Vec<f64>, Vec<f64>) {
-    let mut u:Vec<f64> = vec![0.0;n*m];
+    let mut u:Vec<f64> = a.to_vec();
     let mut l:Vec<f64> = vec![0.0;n*n];
-    let mut eye:Vec<f64> = vec![0.0;n*n];
-
-    copy(a, &mut u, n*m);
-
-    for i in 0..n {
-        eye[i*(n+1)] = 1.0;
-    }
-
+    let mut eye:Vec<f64> = identity(n);
 
     for j in 0..m {
         let mut mmax:f64 = MIN;
@@ -75,7 +67,7 @@ pub fn run() {
     let y = matrix_multiply_simd(&l, &u, n, n, m);
 
     for i in 0..n*m {
-        if (x[i]-y[i]).abs()/x[i] > 0.01  {
+        if (x[i]-y[i]).abs()/x[i].abs() > 0.001  {
             println!("{:?}, {:?}, {:?}", i, x[i], y[i]);
         }
     }
